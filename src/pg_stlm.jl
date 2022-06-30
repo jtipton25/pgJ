@@ -38,6 +38,7 @@ function pg_stlm(Y, X, locs, params, priors)
         ifelse(sum(missing_idx) > 0, sum(missing_idx), "no"),
         " observations with missing count vectors \n",
     )
+    flush(stdout)
 
     n_nonzero = sum(nonzero_idx)
 
@@ -197,16 +198,19 @@ function pg_stlm(Y, X, locs, params, priors)
         params["n_mcmc"],
         " fitting iterations",
     )
+    flush(stdout)
 
     # MCMC loop
     for k = 1:(params["n_adapt"]+params["n_mcmc"])
 
         if (k == params["n_adapt"] + 1)
             println("Starting MCMC fitting. Running for ", params["n_mcmc"], " iterations")
+	    flush(stdout)
         end
         if (mod(k, params["n_message"]) == 0)
             if (k <= params["n_adapt"])
                 println("MCMC adaptation iteration ", k, " out of ", params["n_adapt"])
+		flush(stdout)	 
             else
                 println(
                     "MCMC fitting iteration ",
@@ -214,6 +218,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     " out of ",
                     params["n_mcmc"],
                 )
+		flush(stdout)
             end
         end
 
@@ -446,18 +451,15 @@ function pg_stlm(Y, X, locs, params, priors)
         #
         # Save MCMC parameters
         #
-#println("test")
+
         if (k > params["n_adapt"])
             if (mod(k, params["n_thin"]) == 0)
                 save_idx = div(k - params["n_adapt"], params["n_thin"])
-                #println("save_idx = ", save_idx)                
                 beta_save[save_idx, :, :, :] = beta
                 eta_save[save_idx, :, :, :] = eta
-                #println("test1")                
                 theta_save[save_idx, :] = theta
                 tau_save[save_idx, :] = tau 
                 rho_save[save_idx, :] = rho
-                #println("test2")
                 if (save_omega)
                     omega_save[save_idx, :, :] = omega
                 end
@@ -465,7 +467,6 @@ function pg_stlm(Y, X, locs, params, priors)
                     pi_save[save_idx, :, :, t] =
                         reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
                 end
-                #println("test3")
             end
         end
     end

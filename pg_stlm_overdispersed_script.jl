@@ -124,7 +124,7 @@ if (!isfile("output/overdispersed_sim_fit.jld"))
     BLAS.set_num_threads(32);
     tic = now();
     out = pg_stlm_overdispersed(Y, X, locs, params, priors); # XX minutes for 200 iterations -- can this be sped up more through parallelization?
-    # parallelization for omega running time of 20 minutes for 200 iterations on macbook
+    # parallelization for omega running time of 20 mexinutes for 200 iterations on macbook
     # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
     # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla
     toc = now();
