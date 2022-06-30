@@ -1,17 +1,20 @@
-using Random, Distributions;
+using Random
+using Distributions
+using LinearAlgebra
+using PDMats
 using Dates
-include("polyagamma.jl")
+#include("polyagamma.jl")
 
 # using PolyaGammaSamplers;
 
 # function pg_stlm(Y, X, locs, params, priors, n_cores)
 
-function pg_stlm(Y, X, locs, params, priors)
+function pg_stlm_overdispersed(Y, X, locs, params, priors)
 
     tic = now()
     
     # check input (TODO)
-    # check params (TODO)
+    # check params (TODO)    
 
     N = size(Y, 1)
     J = size(Y, 2)
@@ -73,19 +76,23 @@ function pg_stlm(Y, X, locs, params, priors)
     # initialize Xbeta
     Xbeta = X * beta
 
+    # initialize sigma
+    sigma = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J-1)
+    sigma[sigma .> 5] .= 5
+
     # initialize theta (log-scale)
     # TODO add in Matern priors
     theta_mean = priors["mean_range"]
     theta_var = priors["sd_range"]^2
 
     theta = rand(Normal(theta_mean, sqrt(theta_var)), J - 1)
-    theta[theta.<-2] .= -2
-    theta[theta.>0.1] .= 0.1
+    theta[theta .< -2] .= -2
+    theta[theta .> 0.1] .= 0.1
     # TODO: check if initial values are supplied
 
     # initilaize tau
     tau = rand(InverseGamma(params["alpha_tau"], params["beta_tau"]), J - 1)
-    tau[tau.>10] .= 10
+    tau[tau .> 10] .= 10
 
     # TODO: check if initial values are supplied
 
@@ -98,16 +105,12 @@ function pg_stlm(Y, X, locs, params, priors)
     # setup the GP covariance
     # TODO: setup Matern covariance
     D = pairwise(Euclidean(), locs, locs, dims = 1)
+    I = Diagonal(ones(N))
 
 
     R = [exp.(-D / exp(v)) for v in theta]
-    Sigma = [tau[j]^2 * R[j] for j = 1:(J-1)]
-    R_chol = [cholesky(v) for v in R]
-    Sigma_chol = copy(R_chol)
-    for j = 1:(J-1)
-        Sigma_chol[j].U .*= tau[j]
-    end
-
+    Sigma = [tau[j]^2 * R[j] + sigma[j]^2 * I for j = 1:(J-1)]
+    Sigma_chol = [cholesky(v) for v in Sigma]
     Sigma_inv = [inv(v) for v in Sigma_chol]
 
 
@@ -156,6 +159,7 @@ function pg_stlm(Y, X, locs, params, priors)
     sample_omega = true
     sample_rho = true
     sample_tau = true
+    sample_sigma = true
     sample_theta = true
     sample_eta = true
     save_omega = false
@@ -165,6 +169,7 @@ function pg_stlm(Y, X, locs, params, priors)
     n_save = div(params["n_mcmc"], params["n_thin"])
     beta_save = Array{Float64}(undef, (n_save, p, J - 1))
     tau_save = Array{Float64}(undef, (n_save, J - 1))
+    sigma_save = Array{Float64}(undef, (n_save, J - 1))
     rho_save = Array{Float64}(undef, (n_save, J - 1))
     theta_save = Array{Float64}(undef, (n_save, J - 1))
     eta_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
@@ -188,6 +193,16 @@ function pg_stlm(Y, X, locs, params, priors)
     rho_accept = zeros(J - 1)
     rho_accept_batch = zeros(J - 1)
     rho_tune = 0.025 * ones(J - 1)
+
+    # tuning for tau
+    tau_accept = zeros(J - 1)
+    tau_accept_batch = zeros(J - 1)
+    tau_tune = 0.5 * ones(J - 1)
+    
+    # tuning for sigma
+    sigma_accept = zeros(J - 1)
+    sigma_accept_batch = zeros(J - 1)
+    sigma_tune = 0.5 * ones(J - 1)
 
 
     println(
@@ -258,10 +273,9 @@ function pg_stlm(Y, X, locs, params, priors)
             for j = 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
                 R_star = exp.(-D ./ exp.(theta_star))
-                Sigma_star = tau[j]^2 * R_star
-                R_chol_star = cholesky(R_star)
-                Sigma_chol_star = copy(R_chol_star)
-                Sigma_chol_star.U .*= tau[j]
+                Sigma_star = tau[j]^2 * R_star + sigma[j]^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
                 mh1 =
                     logpdf(
                         MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
@@ -299,7 +313,6 @@ function pg_stlm(Y, X, locs, params, priors)
                     theta[j] = theta_star[1]
                     R[j] = R_star
                     Sigma[j] = Sigma_star
-                    R_chol[j] = R_chol_star
                     Sigma_chol[j] = Sigma_chol_star
                     Sigma_inv[j] = inv(Sigma_chol_star)
                     if k <= params["n_adapt"]
@@ -331,30 +344,148 @@ function pg_stlm(Y, X, locs, params, priors)
 
         if (sample_tau)
             for j = 1:(J-1)
-                devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
-                for t = 2:n_time
-                    devs[:, t] =
-                        eta[:, j, t] - rho[j] * eta[:, j, t] - (1.0 - rho[j]) * Xbeta[:, j]
-                end
-                SS = sum([
-                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
-                ])
-                tau[j] = sqrt(
-                    rand(
-                        InverseGamma(
-                            0.5 * n_time * N + priors["alpha_tau"],
-                            0.5 * SS + priors["beta_tau"],
-                        ),
-                    ),
-                )
 
-                Sigma[j] = tau[j]^2 * R[j]
-                Sigma_chol[j] = copy(R_chol[j])
-                Sigma_chol[j].U .*= tau[j]
-                Sigma_inv[j] = inv(Sigma_chol[j])
+                tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
+                Sigma_star = tau_star^2 * R[j] + sigma[j]^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
+                mh1 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma_star, Sigma_chol_star),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau_star) +
+                    log(tau_star)
+
+                mh2 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau[j]) +
+                    log(tau[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    tau[j] = tau_star[1]
+                    Sigma[j] = Sigma_star
+                    Sigma_chol[j] = Sigma_chol_star
+                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    if k <= params["n_adapt"]
+                        tau_accept_batch[j] += 1.0 / 50.0
+                    else
+                        tau_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
             end
         end
+
+        # adapt the tuning for tau
+        if k <= params["n_adapt"]
+#            save_idx = mod(k, 50)
+#            if (mod(k, 50) == 0)
+#                save_idx = 50
+#            end
+#            tau_batch[save_idx, :] = tau
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, tau_accept_batch, tau_tune)
+                tau_accept_batch = out_tuning["accept"]
+                tau_tune = out_tuning["tune"]
+            end
+        end
+
+        #
+        # Sample sigma
+        #
+
+        if (sample_sigma)
+            for j = 1:(J-1)
+
+                sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
+                Sigma_star = tau[j]^2 * R[j] + sigma_star^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
+                mh1 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma_star, Sigma_chol_star),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma_star) +
+                    log(sigma_star)
+
+                mh2 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma[j]) +
+                    log(sigma[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    sigma[j] = sigma_star[1]
+                    Sigma[j] = Sigma_star
+                    Sigma_chol[j] = Sigma_chol_star
+                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    if k <= params["n_adapt"]
+                        sigma_accept_batch[j] += 1.0 / 50.0
+                    else
+                        sigma_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
+            end
+        end
+
+        # adapt the tuning for sigma
+        if k <= params["n_adapt"]
+#            save_idx = mod(k, 50)
+#            if (mod(k, 50) == 0)
+#                save_idx = 50
+#            end
+#            sigma_batch[save_idx, :] = sigma
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, sigma_accept_batch, sigma_tune)
+                sigma_accept_batch = out_tuning["accept"]
+                sigma_tune = out_tuning["tune"]
+            end
+        end
+
 
         #
         # sample eta
@@ -456,6 +587,7 @@ function pg_stlm(Y, X, locs, params, priors)
                 #println("test1")                
                 theta_save[save_idx, :] = theta
                 tau_save[save_idx, :] = tau 
+                sigma_save[save_idx, :] = sigma
                 rho_save[save_idx, :] = rho
                 #println("test2")
                 if (save_omega)
@@ -483,6 +615,7 @@ function pg_stlm(Y, X, locs, params, priors)
             "omega" => omega_save,
             "theta" => theta_save,
             "tau" => tau_save,
+            "sigma" => sigma_save,
             "pi" => pi_save,
             "rho" => rho_save,
             "runtime" => toc - tic
@@ -493,6 +626,7 @@ function pg_stlm(Y, X, locs, params, priors)
             "eta" => eta_save,
             "theta" => theta_save,
             "tau" => tau_save,
+            "sigma" => sigma_save,
             "pi" => pi_save,
             "rho" => rho_save,
             "runtime" => toc - tic
