@@ -1,4 +1,5 @@
-
+# bash command to run script is 
+# julia -t 32 pg_stlm_overdispersed_script.jl > overdispersed_out.txt &
 using Random, Distributions, LinearAlgebra, PDMats, Plots;
 using DataFrames, Distances, GaussianRandomFields;
 #using GaussianProcesses;

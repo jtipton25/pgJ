@@ -28,6 +28,10 @@ pg_stlm(Y, X, locs, params, priors)
 pg_stlm_overdispersed(Y, X, locs, params, priors)
 ```
 
+```@docs
+pg_stlm_latent(Y, X, locs, params, priors)
+```
+
 ## Helper Functions
 
 ```@docs
