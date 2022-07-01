@@ -1,6 +1,11 @@
-using Random, Distributions, PolyaGammaSamplers;
-
 # function pg_lm(Y, X, params, priors, n_cores)
+export pg_lm
+
+"""
+    pg_lm(Y, X, params)
+
+Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X` and a `Dict` of model parameters 
+"""
 function pg_lm(Y, X, params)
 
     # check input (TODO)

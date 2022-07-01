@@ -1,3 +1,10 @@
+export calc_Mi
+
+"""
+    calc_mi(Y)
+
+Returns the transformation of an observation `Y` to a constant `Mi` needed for Polya-gamma data augmentation
+"""
 function calc_Mi(Y)
     J = length(Y)
     Mi = Array{Integer}(undef, J-1)

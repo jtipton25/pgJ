@@ -4,7 +4,7 @@ include("src/softmax.jl")
 include("src/eta_to_pi.jl")
 include("src/calc_Mi.jl")
 include("src/calc_kappa.jl")
-include("src/polyagamma.jl")
+#include("src/polyagamma.jl")
 include("src/pg_lm.jl")
 
 

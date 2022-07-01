@@ -1,14 +1,12 @@
-using Random
-using Distributions
-using LinearAlgebra
-using PDMats
-using Dates
-#include("polyagamma.jl")
-
-# using PolyaGammaSamplers;
-
 # function pg_stlm(Y, X, locs, params, priors, n_cores)
 
+export pg_stlm_overdispersed
+
+"""
+    pg_stlm_overdispersed(Y, X, locs, params, priors)
+
+Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors`
+"""
 function pg_stlm_overdispersed(Y, X, locs, params, priors)
 
     tic = now()
