@@ -121,7 +121,7 @@ end
 dat_sim = Dict{String, Any}("N" => N, "Y" => Y, "X" => X, "Ni" => Ni, "missing_idx" => missing_idx,
             "beta" => beta, "p" => p, "J" => J, "n_time" => n_time,
             "locs" => locs, "tau" => tau, "theta" => theta,
-            "sigma" => sigma, "rho" => rho, "psi" => psi, "eta" => eta, "pi" =>pi);
+            "rho" => rho, "psi" => psi, "eta" => eta, "pi" =>pi);
 save("output/matern_sim_data.jld", "data", dat_sim);            
 
 
@@ -141,9 +141,11 @@ if (!isfile("output/matern_sim_fit.jld"))
     # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
     # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla
     toc = now();
+
+    save("output/matern_sim_fit.jld", "data", out);
 end
 
-save("output/matern_sim_fit.jld", "data", out);
+
 
 
 #mean(select(out, r"beta"), dims=1)

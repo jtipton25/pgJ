@@ -128,9 +128,11 @@ if (!isfile("output/overdispersed_sim_fit.jld"))
     # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
     # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla
     toc = now();
+    
+    save("output/overdispersed_sim_fit.jld", "data", out);
 end    
 
-save("output/overdispersed_sim_fit.jld", "data", out);
+
 
 
 #mean(select(out, r"beta"), dims=1)
