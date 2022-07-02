@@ -444,10 +444,10 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
                 # final time
                 A = Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                b =
+                b = 
                     Sigma_inv[j] * rho[j] * psi[:, j, n_time-1] +
                     1.0 / sigma[j]^2 * (eta[:, j, n_time] - Xbeta[:, j])
-                psi[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                psi[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
         end
 

@@ -78,7 +78,7 @@ eta = Array{Float64}(undef, (N, J-1, n_time));
 pi = Array{Float64}(undef, (N, J, n_time));
 
 for t in 1:n_time
-    eta[:, :, t] = X * beta + psi[:, :, t] + rand(Normal(0, sigma[j]), N);
+    eta[:, :, t] = reduce(hcat, [X * beta[:, j] + psi[:, j, t] + rand(Normal(0, sigma[j]), N) for j in 1:(J-1)]);
     pi[:, :, t] = reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))';
 end
 
