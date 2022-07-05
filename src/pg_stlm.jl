@@ -487,7 +487,7 @@ function pg_stlm(Y, X, locs, params, priors)
             "tau" => tau_save,
             "pi" => pi_save,
             "rho" => rho_save,
-            "runtime" => toc - tic
+            "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     else
         out = Dict(
@@ -497,7 +497,7 @@ function pg_stlm(Y, X, locs, params, priors)
             "tau" => tau_save,
             "pi" => pi_save,
             "rho" => rho_save,
-            "runtime" => toc - tic
+            "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     end
 

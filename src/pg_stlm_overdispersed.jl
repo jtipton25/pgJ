@@ -617,7 +617,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
             "sigma" => sigma_save,
             "pi" => pi_save,
             "rho" => rho_save,
-            "runtime" => toc - tic
+            "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     else
         out = Dict(
@@ -628,7 +628,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
             "sigma" => sigma_save,
             "pi" => pi_save,
             "rho" => rho_save,
-            "runtime" => toc - tic
+            "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     end
 

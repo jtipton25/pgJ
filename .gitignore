@@ -4,9 +4,10 @@
 .Rproj.user/
 .ipynb_checkpoints/
 *.jld
+*.RDS
 build/
 docs/build/
-
+*_out.txt
 
 
 

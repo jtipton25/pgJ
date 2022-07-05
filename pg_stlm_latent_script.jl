@@ -4,7 +4,9 @@ using Random, Distributions, LinearAlgebra, PDMats, Plots;
 using DataFrames, Distances, GaussianRandomFields;
 #using GaussianProcesses;
 using ThreadsX, Dates;
-using JLD2, FileIO;
+#using JLD2, FileIO;
+using JLD, HDF5;
+using RCall;
 using StatsBase;
 # using PolyaGammaSamplers
 include("src/log_sum_exp.jl")
@@ -12,7 +14,7 @@ include("src/softmax.jl")
 include("src/eta_to_pi.jl")
 include("src/calc_Mi.jl")
 include("src/calc_kappa.jl")
-#include("src/polyagamma.jl")
+include("src/polyagamma.jl")
 include("src/update_tuning.jl")
 include("src/pg_stlm_latent.jl")
 
@@ -41,10 +43,10 @@ locs = Matrix(reshape(reinterpret(Float64, locs), (2,:))');
 D = pairwise(Distances.Euclidean(), locs, locs, dims=1);
 
 I = Diagonal(ones(N));
-sigma = 2.2 * ones(J-1);
-tau = 4.5 * ones(J-1);
-theta = 0.5 * ones(J-1);
-rho = 0.9 * ones(J-1);
+sigma = rand(Uniform(0.5, 1.5), J-1);
+tau = range(0.5, 4, length=J-1) .* ones(J-1);
+theta = exp.(rand(Uniform(-1.5, 0.5), J-1)); 
+rho = rand(Uniform(0.8, 0.99), J-1);
 
 #cov_fun = GaussianRandomFields.Exponential(theta)
 
@@ -72,7 +74,7 @@ X = rand(Normal(0, 1), N, p-1);
 X = hcat(ones(N), X);
 size(X);
 
-beta = rand(Normal(0, 1), p, J-1);
+beta = rand(Normal(0, 0.25), p, J-1);
 
 eta = Array{Float64}(undef, (N, J-1, n_time));
 pi = Array{Float64}(undef, (N, J, n_time));
@@ -101,7 +103,9 @@ end
 missing_idx = StatsBase.sample([false, true], ProbabilityWeights([0.8, 0.2]), (N, n_time));
 for i in 1:N
     for t in 1:n_time
-        Y[i, :, t] .= missing;
+        if (missing_idx[i, t]) 
+            Y[i, :, t] .= missing;
+        end
     end
 end
 
@@ -111,6 +115,7 @@ dat_sim = Dict{String, Any}("N" => N, "Y" => Y, "X" => X, "Ni" => Ni, "missing_i
             "locs" => locs, "sigma" => sigma, "tau" => tau, "theta" => theta,
             "sigma" => sigma, "rho" => rho, "psi" => psi, "eta" => eta, "pi" =>pi);
 save("output/latent_sim_data.jld", "data", dat_sim);            
+R"saveRDS($dat_sim, file = 'output/latent_sim_data.RDS')";
 
 
 params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
@@ -131,6 +136,8 @@ if (!isfile("output/latent_sim_fit.jld"))
     toc = now();
     
     save("output/latent_sim_fit.jld", "data", out);
+    #delete!(out, "runtime"); # remove the runtime which has a corrupted type
+    R"saveRDS($out, file = 'output/latent_sim_fit.RDS', compress = FALSE)";
 end    
 
 
@@ -154,3 +161,9 @@ end
 
 
 
+#save the output in R format 
+#dat_sim=load("output/latent_sim_data.jld")["data"];
+#R"saveRDS($dat_sim, file = 'output/latent_sim_data.RDS')";
+#out=load("output/latent_sim_fit.jld")["data"];
+#delete!(out, "runtime"); # remove the runtime which has a corrupted type
+#R"saveRDS($out, file = 'output/latent_sim_fit.RDS', compress = FALSE)";

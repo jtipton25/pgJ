@@ -1,38 +1,34 @@
-# function pg_stlm(Y, X, locs, params, priors, n_cores)
 
-export pg_stlm_latent
+# function pg_stlm(Y, X, locs, params, priors, n_cores)
+export pg_splm
 
 """
-    pg_stlm_latent(Y, X, locs, params, priors)
+    pg_splm(Y, X, locs, params, priors)
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors`
 """
-function pg_stlm_latent(Y, X, locs, params, priors)
+function pg_splm(Y, X, locs, params, priors)
 
     tic = now()
 
     # check input (TODO)
-    # check params (TODO)    
+    # check params (TODO)
 
     N = size(Y, 1)
     J = size(Y, 2)
-    n_time = size(Y, 3)
     p = size(X, 2)
 
     tX = X'
-    tXX = tX * X
 
-    Mi = Array{Int64}(undef, (N, J - 1, n_time))
-    kappa = Array{Float64}(undef, (N, J - 1, n_time))
-    missing_idx = Array{Bool}(undef, (N, n_time))
-    nonzero_idx = Array{Bool}(undef, (N, J - 1, n_time))
-    for t = 1:n_time
-        for i = 1:N
-            Mi[i, :, t] = calc_Mi(Y[i, :, t])
-            kappa[i, :, t] = calc_kappa(Y[i, :, t], Mi[i, :, t])
-            missing_idx[i, t] = any(ismissing.(Y[i, :, t]))
-            nonzero_idx[i, :, t] = Mi[i, :, t] .!= 0
-        end
+    Mi = Array{Int64}(undef, (N, J - 1))
+    kappa = Array{Float64}(undef, (N, J - 1))
+    missing_idx = Array{Bool}(undef, N)
+    nonzero_idx = Array{Bool}(undef, (N, J - 1))
+    for i = 1:N
+        Mi[i, :] = calc_Mi(Y[i, :])
+        kappa[i, :] = calc_kappa(Y[i, :], Mi[i, :])
+        missing_idx[i] = any(ismissing.(Y[i, :]))
+        nonzero_idx[i, :] = Mi[i, :] .!= 0
     end
 
     print(
@@ -76,10 +72,6 @@ function pg_stlm_latent(Y, X, locs, params, priors)
     # initialize Xbeta
     Xbeta = X * beta
 
-    # initialize sigma
-    sigma = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J - 1)
-    sigma[sigma.>5] .= 5
-
     # initialize theta (log-scale)
     # TODO add in Matern priors
     theta_mean = priors["mean_range"]
@@ -96,16 +88,10 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
     # TODO: check if initial values are supplied
 
-    # initialize rho
-    rho = rand(Uniform(0, 1), J - 1)
-
-    # TODO: check if initial values are supplied
-
 
     # setup the GP covariance
     # TODO: setup Matern covariance
-    D = pairwise(Euclidean(), locs, locs, dims = 1)
-    I = Diagonal(ones(N))
+    D = pairwise(Euclidean(), locs, locs, dims=1)
 
 
     R = [exp.(-D / exp(v)) for v in theta]
@@ -118,28 +104,17 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
     Sigma_inv = [inv(v) for v in Sigma_chol]
 
-    # initialize psi
-    psi = Array{Float64}(undef, (N, J - 1, n_time))
-    for j = 1:(J-1)
-        psi[:, j, 1] = rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
-        for t = 2:n_time
-            psi[:, j, t] =
-                rand(MvNormal(rho[j] * psi[:, j, t-1], PDMat(Sigma[j], Sigma_chol[j])), 1)
-        end
-    end
 
     # initialize eta
-    eta = Array{Float64}(undef, (N, J - 1, n_time))
+    eta = Array{Float64}(undef, (N, J - 1))
     for j = 1:(J-1)
-        eta[:, j, 1] = Xbeta[:, j] + psi[:, j, 1] + rand(Normal(0, sigma[j]), N)
-        for t = 2:n_time
-            eta[:, j, t] = Xbeta[:, j] + psi[:, j, t] + rand(Normal(0, sigma[j]), N)
-        end
+        eta[:, j] =
+            Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
     end
 
     # initialize omega
 
-    omega = zeros(N, J - 1, n_time)
+    omega = zeros(N, J - 1)
     Mi_nonzero = Mi[nonzero_idx]
     eta_nonzero = eta[nonzero_idx]
 
@@ -168,12 +143,9 @@ function pg_stlm_latent(Y, X, locs, params, priors)
     # TODO: setup config
     sample_beta = true
     sample_omega = true
-    sample_rho = true
     sample_tau = true
-    sample_sigma = true
     sample_theta = true
     sample_eta = true
-    sample_psi = true
     save_omega = false
 
     # setup save variables
@@ -181,14 +153,11 @@ function pg_stlm_latent(Y, X, locs, params, priors)
     n_save = div(params["n_mcmc"], params["n_thin"])
     beta_save = Array{Float64}(undef, (n_save, p, J - 1))
     tau_save = Array{Float64}(undef, (n_save, J - 1))
-    sigma_save = Array{Float64}(undef, (n_save, J - 1))
-    rho_save = Array{Float64}(undef, (n_save, J - 1))
     theta_save = Array{Float64}(undef, (n_save, J - 1))
-    eta_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
-    psi_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
-    pi_save = Array{Float64}(undef, (n_save, N, J, n_time))
+    eta_save = Array{Float64}(undef, (n_save, N, J - 1))
+    pi_save = Array{Float64}(undef, (n_save, N, J))
     if (save_omega)
-        omega_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
+        omega_save = Array{Float64}(undef, (n_save, N, J - 1))
     end
 
     #
@@ -202,10 +171,7 @@ function pg_stlm_latent(Y, X, locs, params, priors)
     #    theta_batch = Array{Float64}(undef, 50, J-1)
     theta_tune = 0.5 * mean(D) * ones(J - 1)
 
-    # tuning for rho
-    rho_accept = zeros(J - 1)
-    rho_accept_batch = zeros(J - 1)
-    rho_tune = 0.025 * ones(J - 1)
+
 
     println(
         "Starting MCMC. Running for ",
@@ -248,9 +214,7 @@ function pg_stlm_latent(Y, X, locs, params, priors)
             #    ThreadsX.collect(rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero);
             #@time omega[nonzero_idx] =
             #    [rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero];
-            omega[nonzero_idx] = ThreadsX.collect(
-                rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero
-            )
+            omega[nonzero_idx] = ThreadsX.collect(rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero)
         end
 
         #
@@ -259,12 +223,9 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
         if (sample_beta)
             for j = 1:(J-1)
-                A = n_time * tXX / (sigma[j]^2) + Sigma_beta_inv
-                b = dropdims(
-                    sum(tX * (eta[:, j, :] - psi[:, j, :]), dims = 2) / (sigma[j]^2) +
-                    Sigma_beta_inv_mu_beta,
-                    dims = 2,
-                )
+                tXSigma_inv = X' * Sigma_inv[j]
+                A = tXSigma_inv * X + Sigma_beta_inv
+                b = tXSigma_inv * eta[:, j] + Sigma_beta_inv_mu_beta
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
         end
@@ -280,49 +241,31 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         if (sample_theta)
             for j = 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = exp.(-D ./ exp.(theta_star))
+                R_star = exp.(-D ./ exp(theta_star))
                 Sigma_star = tau[j]^2 * R_star
                 R_chol_star = cholesky(R_star)
                 Sigma_chol_star = copy(R_chol_star)
                 Sigma_chol_star.U .*= tau[j]
-
                 mh1 =
                     logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma_star, Sigma_chol_star)),
-                        psi[:, j, 1],
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j],
                     ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
                     logpdf(Normal(theta_mean, sqrt(theta_var)), theta_star)
 
                 mh2 =
                     logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])),
-                        psi[:, j, 1],
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j],
                     ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
                     logpdf(Normal(theta_mean, sqrt(theta_var)), theta[j])
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    theta[j] = theta_star[1]
+                    theta[j] = theta_star
                     R[j] = R_star
                     Sigma[j] = Sigma_star
+                    R_chol[j] = R_chol_star
                     Sigma_chol[j] = Sigma_chol_star
                     Sigma_inv[j] = inv(Sigma_chol_star)
                     if k <= params["n_adapt"]
@@ -354,18 +297,12 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
         if (sample_tau)
             for j = 1:(J-1)
-                devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = psi[:, j, 1]
-                for t = 2:n_time
-                    devs[:, t] = psi[:, j, t] - rho[j] * psi[:, j, t]
-                end
-                SS = sum([
-                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
-                ])
+                devs = eta[:, j] - Xbeta[:, j]
+                SS = devs' * (tau[j]^2 * Sigma_inv[j] * devs)
                 tau[j] = sqrt(
                     rand(
                         InverseGamma(
-                            0.5 * n_time * N + priors["alpha_tau"],
+                            0.5 * N + priors["alpha_tau"],
                             0.5 * SS + priors["beta_tau"],
                         ),
                     ),
@@ -379,128 +316,19 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         end
 
         #
-        # Sample sigma
-        #
-
-        if (sample_sigma)
-            for j = 1:(J-1)
-                SS = sum(
-                    sum(
-                        [(eta[:, j, t] - Xbeta[:, j] - psi[:, j, t]).^2 for t = 1:n_time]                    
-                    )
-                )
-                sigma[j] = sqrt(
-                    rand(
-                        InverseGamma(
-                            0.5 * n_time * N + priors["alpha_sigma"],
-                            0.5 * SS + priors["beta_sigma"],
-                        ),
-                    ),
-                )
-
-            end
-        end
-
-
-        #
         # sample eta
         #
 
         if (sample_eta)
             for j = 1:(J-1)
-                for t = 1:n_time
-                    sigma2_tilde = 1.0 ./ (1.0 / sigma[j]^2 .+ omega[:, j, t])
-                    mu_tilde =
-                        1.0 / sigma[j]^2 * (Xbeta[:, j] + psi[:, j, t]) + kappa[:, j, t]
-                    sigma2_mu_tilde = sigma2_tilde .* mu_tilde
-                    eta[:, j, t] = [
-                        rand(Normal(sigma2_mu_tilde[i], sqrt(sigma2_tilde[i]))) for i = 1:N
-                    ]
-                end
-            end
-        end
-
-        #
-        # sample psi
-        #
-
-        if (sample_psi)
-            for j = 1:(J-1)
 
                 # initial time
-                A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                b =
-                    Sigma_inv[j] * (rho[j] * psi[:, j, 2]) +
-                    1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
-                psi[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-                for t = 2:(n_time-1)
-                    A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                    b =
-                        Sigma_inv[j] * rho[j] * (psi[:, j, t-1] + psi[:, j, t+1]) +
-                        1.0 / sigma[j]^2 * (eta[:, j, t] - Xbeta[:, j])
-                    psi[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-                end
-
-                # final time
-                A = Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                b = 
-                    Sigma_inv[j] * rho[j] * psi[:, j, n_time-1] +
-                    1.0 / sigma[j]^2 * (eta[:, j, n_time] - Xbeta[:, j])
-                psi[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                A = Sigma_inv[j] + Diagonal(omega[:, j])
+                b = Sigma_inv[j] * Xbeta[:, j] + kappa[:, j]
+                eta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
         end
 
-        #
-        # sample rho
-        #
-
-        if (sample_rho)
-            for j = 1:(J-1)
-                rho_star = rand(Normal(rho[j], rho_tune[j]))
-
-                mh1 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho_star * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)[1]
-
-                mh2 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])[1]
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    rho[j] = rho_star[1]
-                    if k <= params["n_adapt"]
-                        rho_accept_batch[j] += 1.0 / 50.0
-                    else
-                        rho_accept[j] += 1.0 / params["n_mcmc"]
-                    end
-                end
-            end
-        end
-
-        # adapt the tuning for rho
-        if k <= params["n_adapt"]
-            if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, rho_accept_batch, rho_tune)
-                rho_accept_batch = out_tuning["accept"]
-                rho_tune = out_tuning["tune"]
-            end
-        end
 
         #
         # Save MCMC parameters
@@ -509,20 +337,14 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         if (k > params["n_adapt"])
             if (mod(k, params["n_thin"]) == 0)
                 save_idx = div(k - params["n_adapt"], params["n_thin"])
-                beta_save[save_idx, :, :, :] = beta
-                eta_save[save_idx, :, :, :] = eta
-                psi_save[save_idx, :, :, :] = psi
+                beta_save[save_idx, :, :] = beta
+                eta_save[save_idx, :, :] = eta
                 theta_save[save_idx, :] = theta
                 tau_save[save_idx, :] = tau
-                sigma_save[save_idx, :] = sigma
-                rho_save[save_idx, :] = rho
                 if (save_omega)
                     omega_save[save_idx, :, :] = omega
                 end
-                for t = 1:n_time
-                    pi_save[save_idx, :, :, t] =
-                        reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
-                end
+                pi_save[save_idx, :, :] = reduce(hcat, map(eta_to_pi, eachrow(eta)))'
             end
         end
     end
@@ -537,25 +359,19 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         out = Dict(
             "beta" => beta_save,
             "eta" => eta_save,
-            "psi" => psi_save,
             "omega" => omega_save,
             "theta" => theta_save,
             "tau" => tau_save,
-            "sigma" => sigma_save,
             "pi" => pi_save,
-            "rho" => rho_save,
             "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     else
         out = Dict(
             "beta" => beta_save,
             "eta" => eta_save,
-            "psi" => psi_save,
             "theta" => theta_save,
             "tau" => tau_save,
-            "sigma" => sigma_save,
             "pi" => pi_save,
-            "rho" => rho_save,
             "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     end

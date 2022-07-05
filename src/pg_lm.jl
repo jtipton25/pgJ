@@ -8,6 +8,8 @@ Return the MCMC output for a linear model with A 2-D Array of observations of In
 """
 function pg_lm(Y, X, params)
 
+    tic = now()
+
     # check input (TODO)
     # check params (TODO)
 
@@ -83,6 +85,7 @@ function pg_lm(Y, X, params)
     n_save = div(params["n_mcmc"], params["n_thin"])
     beta_save = Array{Float64}(undef, (n_save, p, J - 1))
     eta_save = Array{Float64}(undef, (n_save, N, J - 1))
+    pi_save = Array{Float64}(undef, (n_save, N, J))
     if (save_omega)
         omega_save = Array{Float64}(undef, (n_save, N, J - 1))
     end
@@ -121,8 +124,11 @@ function pg_lm(Y, X, params)
 
         if (sample_omega)
             eta_nonzero = eta[nonzero_idx]
-            omega[nonzero_idx] =
-                [rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero]
+            #omega[nonzero_idx] =
+            #    [rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero]
+            omega[nonzero_idx] = ThreadsX.collect(
+                rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero
+            )
         end
 
         #
@@ -134,6 +140,7 @@ function pg_lm(Y, X, params)
                 A = Sigma_beta_inv + tX * (omega[:, j] .* X)
                 # A = Sigma_beta_inv + tX * (Diagonal(omega[:, j]) * X)
                 b = Sigma_beta_inv_mu_beta + tXkappa[:, j]
+                #beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(A))), 1)
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
         end
@@ -149,6 +156,7 @@ function pg_lm(Y, X, params)
                 if (save_omega)
                     omega_save[save_idx, :, :] = omega
                 end
+            pi_save[save_idx, :, :] = reduce(hcat, map(eta_to_pi, eachrow(eta)))'
             end
         end
 
@@ -156,37 +164,41 @@ function pg_lm(Y, X, params)
     end # end MCMC loop
 
 
+    toc = now()
 
-    #    if (save_omega)
-    #       out = Dict("beta" => beta_save, "eta" => eta_save, "omega" => omega_save)
-    #    else
-    #       out = Dict("beta" => beta_save, "eta" => eta_save)
-    #    end
-
-
-    # convert Dict to DataFrame
-    out_df = DataFrame()
-    # add betas to out_df
-    for i = 1:p
-        for j = 1:(J-1)
-            out_df[!, "beta[$i,$j]"] = beta_save[:, i, j]
-        end
-    end
-    # add etas to out_df
-    for i = 1:N
-        for j = 1:(J-1)
-            out_df[!, "eta[$i,$j]"] = eta_save[:, i, j]
-        end
-    end
     if (save_omega)
-        # add omega to out_df
-        for i = 1:N
-            for j = 1:(J-1)
-                out_df[!, "omega[$i,$j]"] = omega_save[:, i, j]
-            end
-        end
+        out = Dict("beta" => beta_save, "eta" => eta_save, "omega" => omega_save, 
+        "pi" => pi_save, "runtime" => Int(Dates.value(toc - tic))) # milliseconds runtime as an Int
+    else
+        out = Dict("beta" => beta_save, "eta" => eta_save, 
+        "pi" => pi_save, "runtime" => Int(Dates.value(toc - tic))) # milliseconds runtime as an Int
     end
 
-    return (out_df)
+    return(out)
+
+    ## convert Dict to DataFrame
+    #out_df = DataFrame()
+    ## add betas to out_df
+    #for i = 1:p
+    #    for j = 1:(J-1)
+    #        out_df[!, "beta[$i,$j]"] = beta_save[:, i, j]
+    #    end
+    #end
+    ## add etas to out_df
+    #for i = 1:N
+    #    for j = 1:(J-1)
+    #        out_df[!, "eta[$i,$j]"] = eta_save[:, i, j]
+    #    end
+    #end
+    #if (save_omega)
+    #    # add omega to out_df
+    #    for i = 1:N
+    #        for j = 1:(J-1)
+    #            out_df[!, "omega[$i,$j]"] = omega_save[:, i, j]
+    #        end
+    #    end
+    #end
+
+    #return (out_df)
 
 end

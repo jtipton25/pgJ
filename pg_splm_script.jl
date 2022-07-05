@@ -1,5 +1,5 @@
 # bash command to run script is 
-# julia -t 32 pg_stlm_script.jl > matern_out.txt &
+# julia -t 32 pg_splm_script.jl > pg_splm_out.txt &
 using Random, Distributions, LinearAlgebra, PDMats, Plots;
 using DataFrames, Distances, GaussianRandomFields;
 #using GaussianProcesses;
@@ -8,6 +8,7 @@ using ThreadsX, Dates;
 using JLD, HDF5;
 using RCall;
 using StatsBase;
+using Plots;
 # using PolyaGammaSamplers
 include("src/log_sum_exp.jl")
 include("src/softmax.jl")
@@ -16,7 +17,7 @@ include("src/calc_Mi.jl")
 include("src/calc_kappa.jl")
 include("src/polyagamma.jl")
 include("src/update_tuning.jl")
-include("src/pg_stlm.jl")
+include("src/pg_splm.jl")
 
 Threads.nthreads()
 
@@ -28,8 +29,6 @@ N = 33^2;
 #N = 100^2;
 p = 2;
 J = 6;
-#n_time = 5
-n_time = 30;
 #locs = collect(product(
 #     collect(range(0, stop=1, length=isqrt(N))),
 #     collect(range(0, stop=1, length=isqrt(N)))))
@@ -45,7 +44,6 @@ D = pairwise(Distances.Euclidean(), locs, locs, dims=1);
 tau = range(0.25, 1, length=J-1) .* ones(J-1);
 #theta = exp.(rand(Uniform(-1.5, 0.5), J-1)); 
 theta = exp.(rand(Uniform(-1.5, 0.5), J-1)); 
-rho = 0.9 * ones(J-1);
 
 #cov_fun = GaussianRandomFields.Exponential(theta)
 
@@ -73,14 +71,10 @@ j=1;
 @time rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol2[j])), 1);
 @time rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol3[j])), 1);
 
-psi = Array{Float64}(undef, (N, J-1, n_time));
+psi = Array{Float64}(undef, (N, J-1));
 
 for j in 1:(J-1)
-    # first psi
-    psi[:, j, 1] = rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol3[j])), 1);
-    for t in 2:n_time
-        psi[:, j, t] = rand(MvNormal(rho[j] * psi[:, j, t-1], PDMat(Sigma[j], Sigma_chol3[j])), 1);
-    end
+    psi[:, j] = rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol3[j])), 1);
 end    
 
 # setup the fixed effects
@@ -93,69 +87,51 @@ beta_0 = range(-2.5, -0.5, length=J-1)
 for j in 1:(J-1)
     beta[:, j] = [beta_0[j] rand(Normal(0, 0.25), p-1)];
 end
-
-eta = Array{Float64}(undef, (N, J-1, n_time));
-pi = Array{Float64}(undef, (N, J, n_time));
-
-for t in 1:n_time
-    eta[:, :, t] = X * beta + psi[:, :, t];
-    pi[:, :, t] = reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))';
-end
+eta = X * beta + psi;
+pi = reduce(hcat, map(eta_to_pi, eachrow(eta)))';
 
 size(pi);
-sum(pi[1, :, 1]);
-sum(pi[1, :, 10]);
-sum(pi[41, :, 10]);
+sum(pi[1, :]);
+sum(pi[41,:]);
 
 
-Y = Array{Union{Missing, Integer}}(undef, (N, J, n_time));
 
-Ni = rand(Poisson(500), (N, n_time));
+Y = Array{Union{Missing, Integer}}(undef, (N, J));
+
+Ni = rand(Poisson(500), N);
 for i in 1:N
-    for t in 1:n_time
-        Y[i, :, t] = rand(Multinomial(Ni[i, t], pi[i, :, t]), 1);
-    end
+    Y[i, :] = rand(Multinomial(Ni[i], pi[i, :]), 1);
 end
 
 # add in some missing values
-missing_idx = StatsBase.sample([false, true], ProbabilityWeights([0.8, 0.2]), (N, n_time));
-for i in 1:N
-    for t in 1:n_time
-        if (missing_idx[i, t]) 
-            Y[i, :, t] .= missing;
-        end
-    end
-end
+missing_idx = StatsBase.sample([false, true], ProbabilityWeights([0.8, 0.2]), N);
+Y[missing_idx, :] .= missing;
 
 
 dat_sim = Dict{String, Any}("N" => N, "Y" => Y, "X" => X, "Ni" => Ni, "missing_idx" => missing_idx,
-            "beta" => beta, "p" => p, "J" => J, "n_time" => n_time,
+            "beta" => beta, "p" => p, "J" => J, 
             "locs" => locs, "tau" => tau, "theta" => theta,
-            "rho" => rho, "psi" => psi, "eta" => eta, "pi" =>pi);
-save("output/matern_sim_data.jld", "data", dat_sim);     
-R"saveRDS($dat_sim, file = 'output/matern_sim_data.RDS')";       
-
+            "psi" => psi, "eta" => eta, "pi" =>pi);
+save("output/pg_splm_sim_data.jld", "data", dat_sim);            
+R"saveRDS($dat_sim, file = 'output/pg_splm_sim_data.RDS')";
 
 params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(10.0 .* ones(p)),
        	"mean_range" => 0, "sd_range" => 10,
-	    "alpha_tau" => 1, "beta_tau" => 1,
- 	    "alpha_rho" => 1, "beta_rho" => 1);
+	    "alpha_tau" => 1, "beta_tau" => 1,);
 
-
-if (!isfile("output/matern_sim_fit.jld"))
+if (!isfile("output/pg_splm_sim_fit.jld"))
     BLAS.set_num_threads(32);
     tic = now();
-    out = pg_stlm(Y, X, locs, params, priors); # 32 minutes for 200 iterations -- can this be sped up more through parallelization?
+    out = pg_splm(Y, X, locs, params, priors); # 32 minutes for 200 iterations -- can this be sped up more through parallelization?
     # parallelization for omega running time of 20 minutes for 200 iterations on macbook
     # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
     # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla
     toc = now();
 
-    save("output/matern_sim_fit.jld", "data", out);
-    #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-    R"saveRDS($out, file = 'output/matern_sim_fit.RDS', compress = FALSE)";
+    save("output/pg_splm_sim_fit.jld", "data", out);
+    R"saveRDS($out, file = 'output/pg_splm_sim_fit.RDS', compress = FALSE)";
 end
 
 
