@@ -245,7 +245,11 @@ function pg_stlm(Y, X, locs, params, priors)
                 tXSigma_inv = X' * Sigma_inv[j]
                 A = n_time * tXSigma_inv * X + Sigma_beta_inv
                 b = dropdims(
-                    sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
+                    # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
+                    # sum(rho[j] * tXSigma_inv * eta[:, j, 2:n_time], dims = 2) + Sigma_beta_inv_mu_beta, 
+                    tXSigma_inv * eta[:, j, 1] + 
+                    sum(tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims = 2) + 
+                    Sigma_beta_inv_mu_beta, 
                     dims = 2,
                 )
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
@@ -256,6 +260,80 @@ function pg_stlm(Y, X, locs, params, priors)
         Xbeta = X * beta
 
         #
+        # sample eta
+        #
+
+        if (sample_eta)
+            for j = 1:(J-1)
+
+                # initial time
+                A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                b =
+                    Sigma_inv[j] * (
+                    # (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                    (1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, 2]
+                    ) +
+                    kappa[:, j, 1]
+                eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+
+                for t = 2:(n_time-1)
+                    A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
+                    b =
+                        Sigma_inv[j] * (
+                            # (1.0 - rho[j])^2 * Xbeta[:, j] +
+                            (1.0 - rho[j]) * Xbeta[:, j] +
+                            rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
+                        ) + 
+                        kappa[:, j, t]
+                    eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                end
+
+                # final time
+                A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
+                b =
+                    Sigma_inv[j] * (
+                        # (1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
+                        Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]
+                    ) +                    
+                    kappa[:, j, n_time]
+                eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+
+            end
+        end
+        
+        #
+        # Sample tau
+        #
+
+        if (sample_tau)
+            for j = 1:(J-1)
+                devs = Array{Float64}(undef, (N, n_time))
+                devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
+                for t = 2:n_time
+                    devs[:, t] =
+                        # eta[:, j, t] - rho[j] * eta[:, j, t] - (1.0 - rho[j]) * Xbeta[:, j]
+                        eta[:, j, t] - Xbeta[:, j] - rho[j] * eta[:, j, t-1]
+                end
+                SS = sum([
+                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
+                ])
+                tau[j] = sqrt(
+                    rand(
+                        InverseGamma(
+                            0.5 * n_time * N + priors["alpha_tau"],
+                            0.5 * SS + priors["beta_tau"],
+                        ),
+                    ),
+                )
+
+                Sigma[j] = tau[j]^2 * R[j]
+                Sigma_chol[j] = copy(R_chol[j])
+                Sigma_chol[j].U .*= tau[j]
+                Sigma_inv[j] = inv(Sigma_chol[j])
+            end
+        end
+
+        #
         # sample theta
         #
 
@@ -263,7 +341,7 @@ function pg_stlm(Y, X, locs, params, priors)
         if (sample_theta)
             for j = 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = exp.(-D ./ exp.(theta_star))
+                R_star = exp.(-D / exp(theta_star))
                 Sigma_star = tau[j]^2 * R_star
                 R_chol_star = cholesky(R_star)
                 Sigma_chol_star = copy(R_chol_star)
@@ -302,7 +380,7 @@ function pg_stlm(Y, X, locs, params, priors)
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    theta[j] = theta_star[1]
+                    theta[j] = theta_star
                     R[j] = R_star
                     Sigma[j] = Sigma_star
                     R_chol[j] = R_chol_star
@@ -319,82 +397,10 @@ function pg_stlm(Y, X, locs, params, priors)
 
         # adapt the tuning for theta
         if k <= params["n_adapt"]
-#            save_idx = mod(k, 50)
-#            if (mod(k, 50) == 0)
-#                save_idx = 50
-#            end
-#            theta_batch[save_idx, :] = theta
             if (mod(k, 50) == 0)
                 out_tuning = update_tuning_vec(k, theta_accept_batch, theta_tune)
                 theta_accept_batch = out_tuning["accept"]
                 theta_tune = out_tuning["tune"]
-            end
-        end
-
-        #
-        # Sample tau
-        #
-
-        if (sample_tau)
-            for j = 1:(J-1)
-                devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
-                for t = 2:n_time
-                    devs[:, t] =
-                        eta[:, j, t] - rho[j] * eta[:, j, t] - (1.0 - rho[j]) * Xbeta[:, j]
-                end
-                SS = sum([
-                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
-                ])
-                tau[j] = sqrt(
-                    rand(
-                        InverseGamma(
-                            0.5 * n_time * N + priors["alpha_tau"],
-                            0.5 * SS + priors["beta_tau"],
-                        ),
-                    ),
-                )
-
-                Sigma[j] = tau[j]^2 * R[j]
-                Sigma_chol[j] = copy(R_chol[j])
-                Sigma_chol[j].U .*= tau[j]
-                Sigma_inv[j] = inv(Sigma_chol[j])
-            end
-        end
-
-        #
-        # sample eta
-        #
-
-        if (sample_eta)
-            for j = 1:(J-1)
-
-                # initial time
-                A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                b =
-                    Sigma_inv[j] *
-                    ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                    kappa[:, j, 1]
-                eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-                for t = 2:(n_time-1)
-                    A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
-                    b =
-                        Sigma_inv[j] * (
-                            (1.0 - rho[j])^2 * Xbeta[:, j] +
-                            rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
-                        ) + kappa[:, j, t]
-                    eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-                end
-
-                # final time
-                A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
-                b =
-                    Sigma_inv[j] *
-                    ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
-                    kappa[:, j, n_time]
-                eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
             end
         end
 
@@ -430,7 +436,7 @@ function pg_stlm(Y, X, locs, params, priors)
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    rho[j] = rho_star[1]
+                    rho[j] = rho_star
                     if k <= params["n_adapt"]
                         rho_accept_batch[j] += 1.0 / 50.0
                     else

@@ -1,5 +1,7 @@
 # bash command to run script is 
 # julia -t 32 pg_stlm_script.jl > matern_out.txt &
+println("Starting pg_stlm_script")
+flush(stdout)
 using Random, Distributions, LinearAlgebra, PDMats, Plots;
 using DataFrames, Distances, GaussianRandomFields;
 #using GaussianProcesses;
@@ -24,15 +26,16 @@ Threads.nthreads()
 
 Random.seed!(2022);
 
-N = 33^2;
-#N = 100^2;
+N = 15^2;
 p = 2;
-J = 6;
-#n_time = 5
-n_time = 30;
-#locs = collect(product(
-#     collect(range(0, stop=1, length=isqrt(N))),
-#     collect(range(0, stop=1, length=isqrt(N)))))
+J = 4;
+n_time = 10;
+
+# pollen size
+#N = 33^2;
+#p = 2;
+#J = 16;
+#n_time = 30;
 
 locs = vec(collect(Iterators.product(
      range(0, stop=1, length=isqrt(N)),
@@ -102,6 +105,9 @@ for t in 1:n_time
     pi[:, :, t] = reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))';
 end
 
+
+
+
 size(pi);
 sum(pi[1, :, 1]);
 sum(pi[1, :, 10]);
@@ -136,9 +142,10 @@ save("output/matern_sim_data.jld", "data", dat_sim);
 R"saveRDS($dat_sim, file = 'output/matern_sim_data.RDS')";       
 
 
-params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
+params = Dict{String, Int64}("n_adapt" => 1000, "n_mcmc" => 500, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
+# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
 
-priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(10.0 .* ones(p)),
+priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
        	"mean_range" => 0, "sd_range" => 10,
 	    "alpha_tau" => 1, "beta_tau" => 1,
  	    "alpha_rho" => 1, "beta_rho" => 1);
