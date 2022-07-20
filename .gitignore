@@ -8,6 +8,7 @@
 build/
 docs/build/
 *_out.txt
+*_err.txt
 .vscode/
 
 

@@ -398,36 +398,37 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         if (sample_rho)
             for j = 1:(J-1)
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
+                if ((rho_star < 1) & (rho_star > -1))
+                    mh1 =
+                        sum([
+                            logpdf(
+                                MvNormal(
+                                    rho_star * psi[:, j, t-1],
+                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                ),
+                                psi[:, j, t],
+                            ) for t = 2:n_time
+                        ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
-                mh1 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho_star * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
+                    mh2 =
+                        sum([
+                            logpdf(
+                                MvNormal(
+                                    rho[j] * psi[:, j, t-1],
+                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                ),
+                                psi[:, j, t],
+                            ) for t = 2:n_time
+                        ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
 
-                mh2 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    rho[j] = rho_star
-                    if k <= params["n_adapt"]
-                        rho_accept_batch[j] += 1.0 / 50.0
-                    else
-                        rho_accept[j] += 1.0 / params["n_mcmc"]
+                    mh = exp(mh1 - mh2)
+                    if mh > rand(Uniform(0, 1))
+                        rho[j] = rho_star
+                        if k <= params["n_adapt"]
+                            rho_accept_batch[j] += 1.0 / 50.0
+                        else
+                            rho_accept[j] += 1.0 / params["n_mcmc"]
+                        end
                     end
                 end
             end
