@@ -101,7 +101,13 @@ eta = Array{Float64}(undef, (N, J-1, n_time));
 pi = Array{Float64}(undef, (N, J, n_time));
 
 for t in 1:n_time
-    eta[:, :, t] = X * beta + psi[:, :, t];
+    for j in 1:(J-1)
+        if t == 1
+            eta[:, j, t] = X * beta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol3[j])), 1);
+        else
+            eta[:, j, t] = (1 - rho[j]) * X * beta[:, j] + rho[j] * eta[:, j, t-1] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol3[j])), 1);
+        end
+    end
     pi[:, :, t] = reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))';
 end
 

@@ -243,12 +243,13 @@ function pg_stlm(Y, X, locs, params, priors)
         if (sample_beta)
             for j = 1:(J-1)
                 tXSigma_inv = X' * Sigma_inv[j]
-                A = n_time * tXSigma_inv * X + Sigma_beta_inv
+                # A = n_time * tXSigma_inv * X + Sigma_beta_inv
+                A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
                 b = dropdims(
                     # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
                     # sum(rho[j] * tXSigma_inv * eta[:, j, 2:n_time], dims = 2) + Sigma_beta_inv_mu_beta, 
                     tXSigma_inv * eta[:, j, 1] + 
-                    sum(tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims = 2) + 
+                    sum((1 - rho[j]) * tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims = 2) + 
                     Sigma_beta_inv_mu_beta, 
                     dims = 2,
                 )
@@ -269,10 +270,8 @@ function pg_stlm(Y, X, locs, params, priors)
                 # initial time
                 A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
                 b =
-                    Sigma_inv[j] * (
-                    # (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                    (1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, 2]
-                    ) +
+                    Sigma_inv[j] * 
+                    ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                     kappa[:, j, 1]
                 eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
 
@@ -280,8 +279,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
                     b =
                         Sigma_inv[j] * (
-                            # (1.0 - rho[j])^2 * Xbeta[:, j] +
-                            (1.0 - rho[j]) * Xbeta[:, j] +
+                            (1.0 - rho[j])^2 * Xbeta[:, j] +
                             rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
                         ) + 
                         kappa[:, j, t]
@@ -291,10 +289,8 @@ function pg_stlm(Y, X, locs, params, priors)
                 # final time
                 A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
                 b =
-                    Sigma_inv[j] * (
-                        # (1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
-                        Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]
-                    ) +                    
+                    Sigma_inv[j] * 
+                        ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +       
                     kappa[:, j, n_time]
                 eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
 
@@ -311,8 +307,8 @@ function pg_stlm(Y, X, locs, params, priors)
                 devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
                 for t = 2:n_time
                     devs[:, t] =
-                        # eta[:, j, t] - rho[j] * eta[:, j, t] - (1.0 - rho[j]) * Xbeta[:, j]
-                        eta[:, j, t] - Xbeta[:, j] - rho[j] * eta[:, j, t-1]
+                        eta[:, j, t] - rho[j] * eta[:, j, t-1] - (1.0 - rho[j]) * Xbeta[:, j]
+                        # eta[:, j, t] - Xbeta[:, j] - rho[j] * eta[:, j, t-1]
                 end
                 SS = sum([
                     devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
@@ -354,7 +350,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
                                 PDMat(Sigma_star, Sigma_chol_star),
                             ),
                             eta[:, j, t],
@@ -370,7 +366,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
                                 PDMat(Sigma[j], Sigma_chol[j]),
                             ),
                             eta[:, j, t],
@@ -416,7 +412,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho_star * eta[:, j, t-1],
+                                (1 - rho_star) * Xbeta[:, j] + rho_star * eta[:, j, t-1],
                                 PDMat(Sigma[j], Sigma_chol[j]),
                             ),
                             eta[:, j, t],
@@ -427,7 +423,7 @@ function pg_stlm(Y, X, locs, params, priors)
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
                                 PDMat(Sigma[j], Sigma_chol[j]),
                             ),
                             eta[:, j, t],

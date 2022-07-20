@@ -8,7 +8,7 @@
 build/
 docs/build/
 *_out.txt
-
+.vscode/
 
 
 # pg-pollen data files

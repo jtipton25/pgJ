@@ -273,6 +273,54 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         Xbeta = X * beta
 
         #
+        # sample eta
+        #
+
+        if (sample_eta)
+            Threads.@threads for j = 1:(J-1)
+                for t = 1:n_time
+                    sigma2_tilde = 1.0 ./ (1.0 / sigma[j]^2 .+ omega[:, j, t])
+                    mu_tilde =
+                        1.0 / sigma[j]^2 * (Xbeta[:, j] + psi[:, j, t]) + kappa[:, j, t]
+                    sigma2_mu_tilde = sigma2_tilde .* mu_tilde
+                    eta[:, j, t] = [
+                        rand(Normal(sigma2_mu_tilde[i], sqrt(sigma2_tilde[i]))) for i = 1:N
+                    ]
+                end
+            end
+        end
+        
+        #
+        # Sample tau
+        #
+
+        if (sample_tau)
+            for j = 1:(J-1)
+                devs = Array{Float64}(undef, (N, n_time))
+                devs[:, 1] = psi[:, j, 1]
+                for t = 2:n_time
+                    devs[:, t] = psi[:, j, t] - rho[j] * psi[:, j, t-1]
+                end
+                SS = sum([
+                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
+                ])
+                tau[j] = sqrt(
+                    rand(
+                        InverseGamma(
+                            0.5 * n_time * N + priors["alpha_tau"],
+                            0.5 * SS + priors["beta_tau"],
+                        ),
+                    ),
+                )
+
+                Sigma[j] = tau[j]^2 * R[j]
+                Sigma_chol[j] = copy(R_chol[j])
+                Sigma_chol[j].U .*= tau[j]
+                Sigma_inv[j] = inv(Sigma_chol[j])
+            end
+        end
+
+        #
         # sample theta
         #
 
@@ -280,7 +328,7 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         if (sample_theta)
             for j = 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = exp.(-D ./ exp.(theta_star))
+                R_star = exp.(-D / exp(theta_star))
                 Sigma_star = tau[j]^2 * R_star
                 R_chol_star = cholesky(R_star)
                 Sigma_chol_star = copy(R_chol_star)
@@ -320,7 +368,7 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    theta[j] = theta_star[1]
+                    theta[j] = theta_star
                     R[j] = R_star
                     Sigma[j] = Sigma_star
                     Sigma_chol[j] = Sigma_chol_star
@@ -336,11 +384,6 @@ function pg_stlm_latent(Y, X, locs, params, priors)
 
         # adapt the tuning for theta
         if k <= params["n_adapt"]
-            #            save_idx = mod(k, 50)
-            #            if (mod(k, 50) == 0)
-            #                save_idx = 50
-            #            end
-            #            theta_batch[save_idx, :] = theta
             if (mod(k, 50) == 0)
                 out_tuning = update_tuning_vec(k, theta_accept_batch, theta_tune)
                 theta_accept_batch = out_tuning["accept"]
@@ -349,35 +392,56 @@ function pg_stlm_latent(Y, X, locs, params, priors)
         end
 
         #
-        # Sample tau
+        # sample rho
         #
 
-        if (sample_tau)
+        if (sample_rho)
             for j = 1:(J-1)
-                devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = psi[:, j, 1]
-                for t = 2:n_time
-                    devs[:, t] = psi[:, j, t] - rho[j] * psi[:, j, t]
-                end
-                SS = sum([
-                    devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
-                ])
-                tau[j] = sqrt(
-                    rand(
-                        InverseGamma(
-                            0.5 * n_time * N + priors["alpha_tau"],
-                            0.5 * SS + priors["beta_tau"],
-                        ),
-                    ),
-                )
+                rho_star = rand(Normal(rho[j], rho_tune[j]))
 
-                Sigma[j] = tau[j]^2 * R[j]
-                Sigma_chol[j] = copy(R_chol[j])
-                Sigma_chol[j].U .*= tau[j]
-                Sigma_inv[j] = inv(Sigma_chol[j])
+                mh1 =
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                rho_star * psi[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            psi[:, j, t],
+                        ) for t = 2:n_time
+                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
+
+                mh2 =
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                rho[j] * psi[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            psi[:, j, t],
+                        ) for t = 2:n_time
+                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    rho[j] = rho_star
+                    if k <= params["n_adapt"]
+                        rho_accept_batch[j] += 1.0 / 50.0
+                    else
+                        rho_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
             end
         end
 
+        # adapt the tuning for rho
+        if k <= params["n_adapt"]
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, rho_accept_batch, rho_tune)
+                rho_accept_batch = out_tuning["accept"]
+                rho_tune = out_tuning["tune"]
+            end
+        end
+        
         #
         # Sample sigma
         #
@@ -398,25 +462,6 @@ function pg_stlm_latent(Y, X, locs, params, priors)
                     ),
                 )
 
-            end
-        end
-
-
-        #
-        # sample eta
-        #
-
-        if (sample_eta)
-            for j = 1:(J-1)
-                for t = 1:n_time
-                    sigma2_tilde = 1.0 ./ (1.0 / sigma[j]^2 .+ omega[:, j, t])
-                    mu_tilde =
-                        1.0 / sigma[j]^2 * (Xbeta[:, j] + psi[:, j, t]) + kappa[:, j, t]
-                    sigma2_mu_tilde = sigma2_tilde .* mu_tilde
-                    eta[:, j, t] = [
-                        rand(Normal(sigma2_mu_tilde[i], sqrt(sigma2_tilde[i]))) for i = 1:N
-                    ]
-                end
             end
         end
 
@@ -448,57 +493,6 @@ function pg_stlm_latent(Y, X, locs, params, priors)
                     Sigma_inv[j] * rho[j] * psi[:, j, n_time-1] +
                     1.0 / sigma[j]^2 * (eta[:, j, n_time] - Xbeta[:, j])
                 psi[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-            end
-        end
-
-        #
-        # sample rho
-        #
-
-        if (sample_rho)
-            for j = 1:(J-1)
-                rho_star = rand(Normal(rho[j], rho_tune[j]))
-
-                mh1 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho_star * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)[1]
-
-                mh2 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])[1]
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    rho[j] = rho_star[1]
-                    if k <= params["n_adapt"]
-                        rho_accept_batch[j] += 1.0 / 50.0
-                    else
-                        rho_accept[j] += 1.0 / params["n_mcmc"]
-                    end
-                end
-            end
-        end
-
-        # adapt the tuning for rho
-        if k <= params["n_adapt"]
-            if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, rho_accept_batch, rho_tune)
-                rho_accept_batch = out_tuning["accept"]
-                rho_tune = out_tuning["tune"]
             end
         end
 

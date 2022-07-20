@@ -255,9 +255,13 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
         if (sample_beta)
             for j = 1:(J-1)
                 tXSigma_inv = X' * Sigma_inv[j]
-                A = n_time * tXSigma_inv * X + Sigma_beta_inv
+                # A = n_time * tXSigma_inv * X + Sigma_beta_inv
+                A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
                 b = dropdims(
-                    sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
+                    # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
+                    tXSigma_inv * eta[:, j, 1] + 
+                    sum((1 - rho[j]) * tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims = 2) + 
+                    Sigma_beta_inv_mu_beta, 
                     dims = 2,
                 )
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
@@ -266,229 +270,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
 
         # update Xbeta
         Xbeta = X * beta
-
-        #
-        # sample theta
-        #
-
-        # TODO: add in Matern
-        if (sample_theta)
-            for j = 1:(J-1)
-                theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = exp.(-D ./ exp.(theta_star))
-                Sigma_star = tau[j]^2 * R_star + sigma[j]^2 * I
-                Sigma_chol_star = cholesky(Sigma_star)                
-
-                mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta_star)
-
-                mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta[j])
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    theta[j] = theta_star[1]
-                    R[j] = R_star
-                    Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
-                    if k <= params["n_adapt"]
-                        theta_accept_batch[j] += 1.0 / 50.0
-                    else
-                        theta_accept[j] += 1.0 / params["n_mcmc"]
-                    end
-                end
-            end
-        end
-
-        # adapt the tuning for theta
-        if k <= params["n_adapt"]
-#            save_idx = mod(k, 50)
-#            if (mod(k, 50) == 0)
-#                save_idx = 50
-#            end
-#            theta_batch[save_idx, :] = theta
-            if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, theta_accept_batch, theta_tune)
-                theta_accept_batch = out_tuning["accept"]
-                theta_tune = out_tuning["tune"]
-            end
-        end
-
-        #
-        # Sample tau
-        #
-
-        if (sample_tau)
-            for j = 1:(J-1)
-
-                tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
-                Sigma_star = tau_star^2 * R[j] + sigma[j]^2 * I
-                Sigma_chol_star = cholesky(Sigma_star)                
-
-                mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau_star) +
-                    log(tau_star)
-
-                mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau[j]) +
-                    log(tau[j])
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    tau[j] = tau_star[1]
-                    Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
-                    if k <= params["n_adapt"]
-                        tau_accept_batch[j] += 1.0 / 50.0
-                    else
-                        tau_accept[j] += 1.0 / params["n_mcmc"]
-                    end
-                end
-            end
-        end
-
-        # adapt the tuning for tau
-        if k <= params["n_adapt"]
-#            save_idx = mod(k, 50)
-#            if (mod(k, 50) == 0)
-#                save_idx = 50
-#            end
-#            tau_batch[save_idx, :] = tau
-            if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, tau_accept_batch, tau_tune)
-                tau_accept_batch = out_tuning["accept"]
-                tau_tune = out_tuning["tune"]
-            end
-        end
-
-        #
-        # Sample sigma
-        #
-
-        if (sample_sigma)
-            for j = 1:(J-1)
-
-                sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
-                Sigma_star = tau[j]^2 * R[j] + sigma_star^2 * I
-                Sigma_chol_star = cholesky(Sigma_star)                
-
-                mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma_star) +
-                    log(sigma_star)
-
-                mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            eta[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma[j]) +
-                    log(sigma[j])
-
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    sigma[j] = sigma_star[1]
-                    Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
-                    if k <= params["n_adapt"]
-                        sigma_accept_batch[j] += 1.0 / 50.0
-                    else
-                        sigma_accept[j] += 1.0 / params["n_mcmc"]
-                    end
-                end
-            end
-        end
-
-        # adapt the tuning for sigma
-        if k <= params["n_adapt"]
-#            save_idx = mod(k, 50)
-#            if (mod(k, 50) == 0)
-#                save_idx = 50
-#            end
-#            sigma_batch[save_idx, :] = sigma
-            if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, sigma_accept_batch, sigma_tune)
-                sigma_accept_batch = out_tuning["accept"]
-                sigma_tune = out_tuning["tune"]
-            end
-        end
-
 
         #
         # sample eta
@@ -511,7 +292,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
                         Sigma_inv[j] * (
                             (1.0 - rho[j])^2 * Xbeta[:, j] +
                             rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
-                        ) + kappa[:, j, t]
+                        ) + 
+                        kappa[:, j, t]
                     eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                 end
 
@@ -519,10 +301,147 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
                 A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
                 b =
                     Sigma_inv[j] *
-                    ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
+                        ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
                     kappa[:, j, n_time]
                 eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
 
+            end
+        end
+
+        #
+        # Sample tau
+        #
+
+        if (sample_tau)
+            for j = 1:(J-1)
+                tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
+                Sigma_star = tau_star^2 * R[j] + sigma[j]^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
+                mh1 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma_star, Sigma_chol_star),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau_star) +
+                    log(tau_star)
+
+                mh2 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau[j]) +
+                    log(tau[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    tau[j] = tau_star
+                    Sigma[j] = Sigma_star
+                    Sigma_chol[j] = Sigma_chol_star
+                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    if k <= params["n_adapt"]
+                        tau_accept_batch[j] += 1.0 / 50.0
+                    else
+                        tau_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
+            end
+        end
+
+        # adapt the tuning for tau
+        if k <= params["n_adapt"]
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, tau_accept_batch, tau_tune)
+                tau_accept_batch = out_tuning["accept"]
+                tau_tune = out_tuning["tune"]
+            end
+        end
+
+        #
+        # sample theta
+        #
+
+        # TODO: add in Matern
+        if (sample_theta)
+            for j = 1:(J-1)
+                theta_star = rand(Normal(theta[j], theta_tune[j]))
+                R_star = exp.(-D / exp(theta_star))
+                Sigma_star = tau[j]^2 * R_star + sigma[j]^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
+                mh1 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma_star, Sigma_chol_star),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta_star)
+
+                mh2 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    theta[j] = theta_star
+                    R[j] = R_star
+                    Sigma[j] = Sigma_star
+                    Sigma_chol[j] = Sigma_chol_star
+                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    if k <= params["n_adapt"]
+                        theta_accept_batch[j] += 1.0 / 50.0
+                    else
+                        theta_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
+            end
+        end
+
+        # adapt the tuning for theta
+        if k <= params["n_adapt"]
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, theta_accept_batch, theta_tune)
+                theta_accept_batch = out_tuning["accept"]
+                theta_tune = out_tuning["tune"]
             end
         end
 
@@ -538,27 +457,27 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho_star * eta[:, j, t-1],
+                                (1 - rho_star) * beta[:, j] + rho_star * eta[:, j, t-1],
                                 PDMat(Sigma[j], Sigma_chol[j]),
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)[1]
+                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                 mh2 =
                     sum([
                         logpdf(
                             MvNormal(
-                                Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
                                 PDMat(Sigma[j], Sigma_chol[j]),
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
-                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])[1]
+                    ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    rho[j] = rho_star[1]
+                    rho[j] = rho_star
                     if k <= params["n_adapt"]
                         rho_accept_batch[j] += 1.0 / 50.0
                     else
@@ -574,6 +493,75 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors)
                 out_tuning = update_tuning_vec(k, rho_accept_batch, rho_tune)
                 rho_accept_batch = out_tuning["accept"]
                 rho_tune = out_tuning["tune"]
+            end
+        end
+        
+        #
+        # Sample sigma
+        #
+
+        if (sample_sigma)
+            for j = 1:(J-1)
+
+                sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
+                Sigma_star = tau[j]^2 * R[j] + sigma_star^2 * I
+                Sigma_chol_star = cholesky(Sigma_star)                
+
+                mh1 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma_star, Sigma_chol_star),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma_star) +
+                    log(sigma_star)
+
+                mh2 =
+                    logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    ) +
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                PDMat(Sigma[j], Sigma_chol[j]),
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]), sigma[j]) +
+                    log(sigma[j])
+
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    sigma[j] = sigma_star
+                    Sigma[j] = Sigma_star
+                    Sigma_chol[j] = Sigma_chol_star
+                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    if k <= params["n_adapt"]
+                        sigma_accept_batch[j] += 1.0 / 50.0
+                    else
+                        sigma_accept[j] += 1.0 / params["n_mcmc"]
+                    end
+                end
+            end
+        end
+
+        # adapt the tuning for sigma
+        if k <= params["n_adapt"]
+            if (mod(k, 50) == 0)
+                out_tuning = update_tuning_vec(k, sigma_accept_batch, sigma_tune)
+                sigma_accept_batch = out_tuning["accept"]
+                sigma_tune = out_tuning["tune"]
             end
         end
 
