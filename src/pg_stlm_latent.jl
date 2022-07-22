@@ -91,7 +91,7 @@ function pg_stlm_latent(Y, X, locs, params, priors)
     # TODO: check if initial values are supplied
 
     # initilaize tau
-    tau = rand(InverseGamma(params["alpha_tau"], params["beta_tau"]), J - 1)
+    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J - 1)
     tau[tau.>10] .= 10
 
     # TODO: check if initial values are supplied

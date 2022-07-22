@@ -1,0 +1,63 @@
+# bash command to run script is 
+# julia -t 32 pollen_pg_stlm_script.jl > pollen_matern_out.txt &
+println("Starting pollen_pg_stlm_script")
+flush(stdout)
+using Random, Distributions, LinearAlgebra, PDMats, Plots;
+using DataFrames, Distances, GaussianRandomFields;
+#using GaussianProcesses;
+using ThreadsX, Dates;
+#using JLD2, FileIO;
+using JLD, HDF5;
+using RCall;
+using RData, CodecBzip2;
+using StatsBase;
+# using PolyaGammaSamplers
+include("src/log_sum_exp.jl")
+include("src/softmax.jl")
+include("src/eta_to_pi.jl")
+include("src/calc_Mi.jl")
+include("src/calc_kappa.jl")
+include("src/polyagamma.jl")
+include("src/update_tuning.jl")
+include("src/pg_stlm.jl")
+
+Threads.nthreads()
+
+# load the pollen data
+
+# dat = RData.load("./data/pollen_dat_5.0.RDS", convert=true)
+Y = load("./data/pollen_data_5.0.h5")["pollen"];
+# convert NaNs to missing
+Y = replace(Y, NaN=>missing);
+# round to integer -- for this data, this is the same as floor and ceil
+Y = round.(Union{Missing, Int64}, Y);
+# add in design matrix with intercept only
+X = reshape(ones(size(Y)[1]), size(Y)[1], 1);
+p = size(X)[2]
+# load the location data
+locs = load("./data/pollen_locs_5.0.h5")["locs"];
+rescale = 1e6
+locs = locs / rescale
+
+params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 1);
+# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
+
+priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
+       	"mean_range" => 0, "sd_range" => 10,
+	    "alpha_tau" => 0.1, "beta_tau" => 0.1,
+ 	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
+
+
+if (!isfile("output/pollen_matern_fit.jld"))
+    BLAS.set_num_threads(32);
+    tic = now();
+    out = pg_stlm(Y, X, locs, params, priors); 
+    toc = now();
+
+    save("output/pollen_matern_fit.jld", "data", out);
+    #delete!(out, "runtime"); # remove the runtime which has a corrupted type
+    R"saveRDS($out, file = 'output/pollen_matern_fit.RDS', compress = FALSE)";
+end
+
+
+

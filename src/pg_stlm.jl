@@ -53,7 +53,7 @@ function pg_stlm(Y, X, locs, params, priors)
 
     # TODO add in custom priors for mu_beta and Sigma_beta
 
-    Sigma_beta_chol = cholesky(Sigma_beta)
+    Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
     Sigma_beta_inv = inv(Sigma_beta_chol.U)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
@@ -86,7 +86,7 @@ function pg_stlm(Y, X, locs, params, priors)
     # TODO: check if initial values are supplied
 
     # initilaize tau
-    tau = rand(InverseGamma(params["alpha_tau"], params["beta_tau"]), J - 1)
+    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J - 1)
     tau[tau.>10] .= 10
 
     # TODO: check if initial values are supplied
@@ -102,7 +102,7 @@ function pg_stlm(Y, X, locs, params, priors)
     D = pairwise(Euclidean(), locs, locs, dims = 1)
 
 
-    R = [exp.(-D / exp(v)) for v in theta]
+    R = [Matrix(Hermitian(exp.(-D / exp(v)))) for v in theta]
     Sigma = [tau[j]^2 * R[j] for j = 1:(J-1)]
     R_chol = [cholesky(v) for v in R]
     Sigma_chol = copy(R_chol)
@@ -337,7 +337,7 @@ function pg_stlm(Y, X, locs, params, priors)
         if (sample_theta)
             for j = 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = exp.(-D / exp(theta_star))
+                R_star = Matrix(Hermitian(exp.(-D / exp(theta_star))))
                 Sigma_star = tau[j]^2 * R_star
                 R_chol_star = cholesky(R_star)
                 Sigma_chol_star = copy(R_chol_star)
