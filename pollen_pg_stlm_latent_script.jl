@@ -20,6 +20,7 @@ include("src/calc_kappa.jl")
 include("src/polyagamma.jl")
 include("src/update_tuning.jl")
 include("src/pg_stlm_latent.jl")
+include("src/predict_pg_stlm_latent.jl")
 
 Threads.nthreads()
 
@@ -36,14 +37,14 @@ X = reshape(ones(size(Y)[1]), size(Y)[1], 1);
 p = size(X)[2]
 # load the location data
 locs = load("./data/pollen_locs_5.0.h5")["locs"];
-rescale = 1e6
+rescale = 1e4
 locs = locs / rescale
 
-params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 1);
-# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
+#params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 1);
+params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
-       	"mean_range" => 0, "sd_range" => 10,
+        "mean_range" => [-2, -2], "sd_range" => [2, 10],
 	    "alpha_tau" => 0.1, "beta_tau" => 0.1,
         "alpha_sigma" => 1, "beta_sigma" => 1,
  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
@@ -51,7 +52,7 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 if (!isfile("output/pollen_latent_fit.jld"))
     BLAS.set_num_threads(32);
     tic = now();
-    out = pg_stlm_latent(Y, X, locs, params, priors); 
+    out = pg_stlm_latent(Y, X, locs, params, priors, corr_fun="matern"); 
     toc = now();
 
     save("output/pollen_latent_fit.jld", "data", out);

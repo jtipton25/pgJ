@@ -1,13 +1,15 @@
+include("update_tuning.jl")
+include("correlation_function.jl")
 
 # function pg_stlm(Y, X, locs, params, priors, n_cores)
 export pg_stlm
 
 """
-    pg_stlm(Y, X, locs, params, priors)
+    pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
-Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors`
+Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm(Y, X, locs, params, priors)
+function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
     tic = now()
     
@@ -21,10 +23,10 @@ function pg_stlm(Y, X, locs, params, priors)
 
     tX = X'
 
-    Mi = Array{Int64}(undef, (N, J - 1, n_time))
-    kappa = Array{Float64}(undef, (N, J - 1, n_time))
+    Mi = Array{Int64}(undef, (N, J-1, n_time))
+    kappa = Array{Float64}(undef, (N, J-1, n_time))
     missing_idx = Array{Bool}(undef, (N, n_time))
-    nonzero_idx = Array{Bool}(undef, (N, J - 1, n_time))
+    nonzero_idx = Array{Bool}(undef, (N, J-1, n_time))
     for t = 1:n_time
         for i = 1:N
             Mi[i, :, t] = calc_Mi(Y[i, :, t])
@@ -54,7 +56,7 @@ function pg_stlm(Y, X, locs, params, priors)
     # TODO add in custom priors for mu_beta and Sigma_beta
 
     Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
-    Sigma_beta_inv = inv(Sigma_beta_chol.U)
+    Sigma_beta_inv = inv(Sigma_beta_chol)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
     # the first case using the pre-computed cholesky is much faster
@@ -69,30 +71,44 @@ function pg_stlm(Y, X, locs, params, priors)
     # @time beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta)), J-1);
 
     # initialize beta
-    beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J - 1)
+    beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J-1)
     # TODO: check if initial values are supplied
 
     # initialize Xbeta
     Xbeta = X * beta
 
     # initialize theta (log-scale)
-    # TODO add in Matern priors
-    theta_mean = priors["mean_range"]
-    theta_var = priors["sd_range"]^2
+    if corr_fun == "exponential"
+        @assert length(priors["mean_range"]) == 1 "The \"mean_range\" prior value must be a vector of length 1"
+        @assert priors["mean_range"] isa Array{<:Number} "The \"mean_range\" prior value must be a vector of length 1"
+        @assert length(priors["sd_range"]) == 1 "The \"sd_range\" prior value must be a vector of positive numbers of length 1"
+        @assert all(priors["sd_range"] .> 0) "The \"sd_range\" prior value must be a vector of positive numbers of length 1"
+        @assert priors["sd_range"] isa Array{<:Number} "The \"sd_range\" prior value must be a vector of positive numbers of length 1"
+    elseif corr_fun == "matern"
+        @assert length(priors["mean_range"]) == 2 "The \"mean_range\" prior value must be a vector of length 2"
+        @assert priors["mean_range"] isa Array{<:Number} "The \"mean_range\" prior value must be a vector of length 1"
+        @assert length(priors["sd_range"]) == 2 "The \"sd_range\" prior value must be a vector of positive numbers of length 1"
+        @assert all(priors["sd_range"] .> 0) "The \"sd_range\" prior value must be a vector of positive numbers of length 1"
+    else
+        @assert false "The correlation function \"corr_fun\" must be either \"exponential\" or \"matern\""
+    end
 
-    theta = rand(Normal(theta_mean, sqrt(theta_var)), J - 1)
+    theta_mean = priors["mean_range"]
+    theta_var = priors["sd_range"].^2
+
+    theta = rand(MvNormal(theta_mean, diagm(theta_var)), J-1)
     theta[theta.<-2] .= -2
     theta[theta.>0.1] .= 0.1
     # TODO: check if initial values are supplied
 
     # initilaize tau
-    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J - 1)
+    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J-1)
     tau[tau.>10] .= 10
 
     # TODO: check if initial values are supplied
 
     # initialize rho
-    rho = rand(Uniform(0, 1), J - 1)
+    rho = rand(Uniform(0, 1), J-1)
 
     # TODO: check if initial values are supplied
 
@@ -101,8 +117,8 @@ function pg_stlm(Y, X, locs, params, priors)
     # TODO: setup Matern covariance
     D = pairwise(Euclidean(), locs, locs, dims = 1)
 
-
-    R = [Matrix(Hermitian(exp.(-D / exp(v)))) for v in theta]
+    # R = [Matrix(Hermitian(exp.(-D / exp(v)))) for v in theta]
+    R = [Matrix(Hermitian(correlation_function.(D, (exp.(v), ), corr_fun = corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
     Sigma = [tau[j]^2 * R[j] for j = 1:(J-1)]
     R_chol = [cholesky(v) for v in R]
     Sigma_chol = copy(R_chol)
@@ -114,7 +130,7 @@ function pg_stlm(Y, X, locs, params, priors)
 
 
     # initialize eta
-    eta = Array{Float64}(undef, (N, J - 1, n_time))
+    eta = Array{Float64}(undef, (N, J-1, n_time))
     for j = 1:(J-1)
         eta[:, j, 1] =
             Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
@@ -127,7 +143,7 @@ function pg_stlm(Y, X, locs, params, priors)
 
     # initialize omega
 
-    omega = zeros(N, J - 1, n_time)
+    omega = zeros(N, J-1, n_time)
     Mi_nonzero = Mi[nonzero_idx]
     eta_nonzero = eta[nonzero_idx]
 
@@ -165,14 +181,17 @@ function pg_stlm(Y, X, locs, params, priors)
     # setup save variables
     # TODO: work on adding in Matern parameters
     n_save = div(params["n_mcmc"], params["n_thin"])
-    beta_save = Array{Float64}(undef, (n_save, p, J - 1))
-    tau_save = Array{Float64}(undef, (n_save, J - 1))
-    rho_save = Array{Float64}(undef, (n_save, J - 1))
-    theta_save = Array{Float64}(undef, (n_save, J - 1))
-    eta_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
+    beta_save = Array{Float64}(undef, (n_save, p, J-1))
+    tau_save = Array{Float64}(undef, (n_save, J-1))
+    rho_save = Array{Float64}(undef, (n_save, J-1))
+    theta_save = Array{Float64}(undef, (n_save, J-1))
+    if corr_fun == "matern"
+        theta_save = Array{Float64}(undef, (n_save, J-1, 2))
+    end
+    eta_save = Array{Float64}(undef, (n_save, N, J-1, n_time))
     pi_save = Array{Float64}(undef, (n_save, N, J, n_time))
     if (save_omega)
-        omega_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
+        omega_save = Array{Float64}(undef, (n_save, N, J-1, n_time))
     end
 
     #
@@ -180,16 +199,26 @@ function pg_stlm(Y, X, locs, params, priors)
     #
 
     # tuning for theta
-    # TODO: add in Matern
-    theta_accept = zeros(J - 1)
-    theta_accept_batch = zeros(J - 1)
-#    theta_batch = Array{Float64}(undef, 50, J-1)
-    theta_tune = 0.5 * mean(D) * ones(J - 1)
+    theta_accept = zeros(J-1)
+    lambda_theta = 0.5 * ones(J-1)
+    theta_accept_batch = zeros(J-1)
+    theta_batch = Array{Float64}(undef, 50, J-1)
+    Sigma_theta_tune = [1.8 * diagm([1]) .- 0.8 for j in 1:J-1]  
+    Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
+
+    if corr_fun == "matern"
+        theta_accept = zeros((J-1, 2))
+        lambda_theta = 0.5 * ones(J-1)
+        theta_accept_batch = zeros((J-1, 2))
+        theta_batch = Array{Float64}(undef, 50, J-1, 2)
+        Sigma_theta_tune = [1.8 * diagm(ones(2)) .- 0.8 for j in 1:J-1]  
+        Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
+    end
 
     # tuning for rho
-    rho_accept = zeros(J - 1)
-    rho_accept_batch = zeros(J - 1)
-    rho_tune = 0.025 * ones(J - 1)
+    rho_accept = zeros(J-1)
+    rho_accept_batch = zeros(J-1)
+    rho_tune = 0.025 * ones(J-1)
 
 
     println(
@@ -336,10 +365,17 @@ function pg_stlm(Y, X, locs, params, priors)
         # TODO: add in Matern
         if (sample_theta)
             for j = 1:(J-1)
-                theta_star = rand(Normal(theta[j], theta_tune[j]))
-                R_star = Matrix(Hermitian(exp.(-D / exp(theta_star))))
+                theta_star = rand(MvNormal(theta[:, j], lambda_theta[j] * PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])))
+                #R_star = Matrix(Hermitian(exp.(-D / exp(theta_star))))
+                R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star), ), corr_fun = corr_fun))) # broadcasting over D but not theta_star
                 Sigma_star = tau[j]^2 * R_star
-                R_chol_star = cholesky(R_star)
+                R_chol_star = try
+                    cholesky(R_star)
+                catch
+                    println("theta_star = ", theta_star)
+                    @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                    cholesky(R_star + 1e-8 * I)
+                end
                 Sigma_chol_star = copy(R_chol_star)
                 Sigma_chol_star.U .*= tau[j]
                 mh1 =
@@ -356,7 +392,8 @@ function pg_stlm(Y, X, locs, params, priors)
                             eta[:, j, t],
                         ) for t = 2:n_time
                     ]) +
-                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta_star)
+                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
+                    
 
                 mh2 =
                     logpdf(
@@ -372,11 +409,11 @@ function pg_stlm(Y, X, locs, params, priors)
                             eta[:, j, t],
                         ) for t = 2:n_time
                     ]) +
-                    logpdf(Normal(theta_mean, sqrt(theta_var)), theta[j])
+                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    theta[j] = theta_star
+                    theta[:, j] = theta_star
                     R[j] = R_star
                     Sigma[j] = Sigma_star
                     R_chol[j] = R_chol_star
@@ -393,10 +430,25 @@ function pg_stlm(Y, X, locs, params, priors)
 
         # adapt the tuning for theta
         if k <= params["n_adapt"]
+            save_idx = mod(k, 50)
+            if mod(k, 50) == 0
+                save_idx = 50
+            end
+            theta_batch[save_idx, :, :] = theta'
             if (mod(k, 50) == 0)
-                out_tuning = update_tuning_vec(k, theta_accept_batch, theta_tune)
+                out_tuning = update_tuning_mv_mat(
+                    k,
+                    theta_accept_batch,
+                    lambda_theta,
+                    theta_batch,
+                    Sigma_theta_tune,
+                    Sigma_theta_tune_chol
+                )
+                theta_batch = out_tuning["batch_samples"]
+                Sigma_theta_tune = out_tuning["Sigma_tune"]
+                Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
+                lambda_theta = out_tuning["lambda"]
                 theta_accept_batch = out_tuning["accept"]
-                theta_tune = out_tuning["tune"]
             end
         end
 
@@ -460,7 +512,7 @@ function pg_stlm(Y, X, locs, params, priors)
                 save_idx = div(k - params["n_adapt"], params["n_thin"])
                 beta_save[save_idx, :, :, :] = beta
                 eta_save[save_idx, :, :, :] = eta
-                theta_save[save_idx, :] = theta
+                theta_save[save_idx, :, :] = theta'
                 tau_save[save_idx, :] = tau 
                 rho_save[save_idx, :] = rho
                 if (save_omega)
@@ -489,7 +541,11 @@ function pg_stlm(Y, X, locs, params, priors)
             "tau" => tau_save,
             "pi" => pi_save,
             "rho" => rho_save,
+            "corr_fun" => corr_fun,
+            "theta_accept" => theta_accept,
+            "rho_accept" => rho_accept,
             "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
+            
         )
     else
         out = Dict(
@@ -499,6 +555,9 @@ function pg_stlm(Y, X, locs, params, priors)
             "tau" => tau_save,
             "pi" => pi_save,
             "rho" => rho_save,
+            "corr_fun" => corr_fun,
+            "theta_accept" => theta_accept,
+            "rho_accept" => rho_accept,
             "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
         )
     end

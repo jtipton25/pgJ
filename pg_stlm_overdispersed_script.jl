@@ -125,12 +125,12 @@ dat_sim = Dict{String, Any}("N" => N, "Y" => Y, "X" => X, "Ni" => Ni, "missing_i
 save("output/overdispersed_sim_data.jld", "data", dat_sim);            
 R"saveRDS($dat_sim, file = 'output/overdispersed_sim_data.RDS')";     
 
-params = Dict{String, Int64}("n_adapt" => 1000, "n_mcmc" => 500, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
-# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
+params = Dict{String, Int64}("n_adapt" => 1000, "n_mcmc" => 500, "n_thin" => 5, "n_message" => 50);
+# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
 
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(10.0 .* ones(p)),
-       	"mean_range" => 0, "sd_range" => 10,
+        "mean_range" => [-2, 0], "sd_range" => [2, 10],
         "alpha_tau" => 1, "beta_tau" => 1,
         "alpha_sigma" => 1, "beta_sigma" => 1,
  	    "alpha_rho" => 1, "beta_rho" => 1);
@@ -138,7 +138,7 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(10.0 
 if (!isfile("output/overdispersed_sim_fit.jld"))
     BLAS.set_num_threads(32);
     tic = now();
-    out = pg_stlm_overdispersed(Y, X, locs, params, priors); # XX minutes for 200 iterations -- can this be sped up more through parallelization?
+    out = pg_stlm_overdispersed(Y, X, locs, params, priors, corr_fun="matern"); # XX minutes for 200 iterations -- can this be sped up more through parallelization?
     # parallelization for omega running time of 20 mexinutes for 200 iterations on macbook
     # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
     # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla

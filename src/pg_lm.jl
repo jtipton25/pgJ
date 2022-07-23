@@ -44,7 +44,8 @@ function pg_lm(Y, X, params)
     # TODO add in custom priors for mu_beta and Sigma_beta
 
     Sigma_beta_chol = cholesky(Sigma_beta)
-    Sigma_beta_inv = inv(Sigma_beta_chol.U)
+    # Sigma_beta_inv = inv(Sigma_beta_chol.U)
+    Sigma_beta_inv = inv(Sigma_beta_chol)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
     # the first case using the pre-computed cholesky is much faster

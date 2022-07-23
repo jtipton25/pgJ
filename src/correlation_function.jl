@@ -1,4 +1,5 @@
-using SpecialFunctions
+import SpecialFunctions.besselk
+import SpecialFunctions.gamma
 
 export matern
 
@@ -44,15 +45,14 @@ correlation_function()
 Return an isotropic and stationary correlation matrix with range or smoothness and range parameter `theta` range (`corr_fun = exponential`) or smoothness and range parameter `theta` (`corr_fun = "matern"`, the Matern smoothness parameter `nu` is `theta[1]` and range parameter `rho` is `theta[2]`) for a distance `d`
 """
 function correlation_function(d, theta; corr_fun="exponential")
-    println(corr_fun)
     @assert d >= 0 "d must be a nonnegative scalar"    
     @assert (corr_fun == "exponential") | (corr_fun == "matern")
     # "corr_fun must be either \"exponential\" or \"matern\""
         if (corr_fun == "exponential")
         # exponential covariance function
         @assert length(theta) == 1 "for exponential covariance function, theta must be a positive scalar"
-        @assert theta > 0 "for exponential covariance function, theta must be a positive scalar"
-        return exp(-d / theta)
+        @assert all(theta .> 0) "for exponential covariance function, theta must be a positive scalar"
+        return exp(-d / theta[1])
     else (corr_fun == "matern")
         # matern covariance function
         @assert length(theta) == 2 "for matern covariance function, theta must be a vector of length 2 of positive numbers"
@@ -77,7 +77,7 @@ function covariance_function(d, tau2, theta; corr_fun="exponential")
     # "corr_fun must be either \"exponential\" or \"matern\""
         if (corr_fun == "exponential")
         # exponential covariance function
-        return tau2 * exp(-d / theta)
+        return tau2 * exp(-d / theta[1])
     else (corr_fun == "matern")
         # matern covariance function
         return tau2 * matern(d, theta[1], theta[2])

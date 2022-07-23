@@ -4,7 +4,7 @@ library(rhdf5)
 library(tidyverse)
 library(patchwork)
 
-source(here::here("pg_stlm_post_processing_plots.R"))
+source(here::here("R", "pg_stlm_post_processing_plots.R"))
 # h5ls("./output/overdispersed_sim.jld")
 
 # load the julia simulation parameters

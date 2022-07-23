@@ -19,6 +19,7 @@ include("src/calc_kappa.jl")
 include("src/polyagamma.jl")
 include("src/update_tuning.jl")
 include("src/pg_stlm.jl")
+include("src/correlation_function.jl")
 
 Threads.nthreads()
 
@@ -47,14 +48,14 @@ D = pairwise(Distances.Euclidean(), locs, locs, dims=1);
 
 tau = range(0.25, 1, length=J-1) .* ones(J-1);
 #theta = exp.(rand(Uniform(-1.5, 0.5), J-1)); 
-theta = exp.(rand(Uniform(-1.5, 0.5), J-1)); 
+theta = exp.(rand(Uniform(-1.5, 0.5), J-1, 2)); 
 rho = 0.9 * ones(J-1);
 
 #cov_fun = GaussianRandomFields.Exponential(theta)
 
 #Sigma = tau * apply(cov_fun, D)
 # TODO: figure out how to do the GP kernels later, start by hand with exponential kernel
-R = [exp.(-D / v) for v in theta];
+R = [correlation_function.(D, (v, )) for v in theta];
 R_chol = [cholesky(v) for v in R];
 Sigma = [tau[j]^2 * R[j] for j in 1:(J-1)];
 Sigma_chol = [tau[j] * R_chol[j].U for j in 1:(J-1)];
@@ -148,11 +149,11 @@ save("output/matern_sim_data.jld", "data", dat_sim);
 R"saveRDS($dat_sim, file = 'output/matern_sim_data.RDS')";       
 
 
-params = Dict{String, Int64}("n_adapt" => 1000, "n_mcmc" => 500, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
-# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "mean_range" => 0, "sd_range" => 10, "alpha_tau" => 1, "beta_tau" => 1);
+params = Dict{String, Int64}("n_adapt" => 1000, "n_mcmc" => 500, "n_thin" => 5, "n_message" => 50);
+# params = Dict{String, Int64}("n_adapt" => 2000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
-       	"mean_range" => 0, "sd_range" => 10,
+       	"mean_range" => [-2, -2], "sd_range" => [2, 10],
 	    "alpha_tau" => 1, "beta_tau" => 1,
  	    "alpha_rho" => 1, "beta_rho" => 1);
 
@@ -160,10 +161,7 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 if (!isfile("output/matern_sim_fit.jld"))
     BLAS.set_num_threads(32);
     tic = now();
-    out = pg_stlm(Y, X, locs, params, priors); # 32 minutes for 200 iterations -- can this be sped up more through parallelization?
-    # parallelization for omega running time of 20 minutes for 200 iterations on macbook
-    # parallelization with 64 threads takes 19 minutes for 200 iterations on statszilla
-    # parallelization with 32 threads takes 18 minutes for 200 iterations on statszilla
+    out = pg_stlm(Y, X, locs, params, priors, corr_fun="matern"); 
     toc = now();
 
     save("output/matern_sim_fit.jld", "data", out);
@@ -171,6 +169,14 @@ if (!isfile("output/matern_sim_fit.jld"))
     R"saveRDS($out, file = 'output/matern_sim_fit.RDS', compress = FALSE)";
 end
 
+# Fit a Matern model
+
+# priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
+#        	"mean_range" => [0, -2], "sd_range" => [10, 2],
+# 	    "alpha_tau" => 0.1, "beta_tau" => 0.1,
+#  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
+
+# out = pg_stlm(Y, X, locs, params, priors, corr_fun="matern"); 
 
 
 
