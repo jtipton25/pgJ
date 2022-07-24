@@ -53,6 +53,7 @@ if (!isfile("output/pollen/pollen_overdispersed_fit.jld"))
     BLAS.set_num_threads(32);
     out = pg_stlm_overdispersed(Y, X, locs, params, priors, corr_fun="matern"); 
     println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
+    # 29 minutes after revising code
 
     save("output/pollen/pollen_overdispersed_fit.jld", "data", out);
     #delete!(out, "runtime"); # remove the runtime which has a corrupted type

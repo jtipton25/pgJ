@@ -125,7 +125,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun = corr_fun))) for
         v in eachcol(theta)
     ] # broadcasting over D but not theta
-    Sigma = [tau[j]^2 * R[j] + sigma[j]^2 * I for j = 1:(J-1)]
+    Sigma = [Matrix(Cholesky(tau[j]^2 * R[j] + sigma[j]^2)) * I for j = 1:(J-1)]
     Sigma_chol = [cholesky(v) for v in Sigma]
     Sigma_inv = [inv(v) for v in Sigma_chol]
 
@@ -206,7 +206,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
     Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
-    Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j = 1:(J-1)]
+    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitan(Sigma_theta_tune[j]))) for j = 1:(J-1)]
 
     if corr_fun == "matern"
         theta_accept = zeros((J - 1, 2))
@@ -214,7 +214,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         theta_accept_batch = zeros((J - 1, 2))
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j = 1:J-1]
-        Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j = 1:(J-1)]
+        Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j = 1:(J-1)]
     end
 
 
@@ -365,7 +365,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     cholesky(Sigma_star)
                 catch
                     @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Sigma_star + 1e-8 * I)
+                    cholesky(Matrix(Hermitian(Sigma_star + 1e-8 * I)))
                 end
 
                 mh1 =
@@ -442,14 +442,14 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
-                # R_star = exp.(-D / exp(theta_star))
                 R_star = correlation_function.(D, (exp.(theta_star),), corr_fun = corr_fun) # broadcasting over D but not theta_star
                 Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
                 catch
+                    println("theta_star = ", theta_star)
                     @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Sigma_star + 1e-8 * I)
+                    cholesky(Matrix(Hermitian(Sigma_star + 1e-8 * I)))
                 end
 
                 mh1 =
@@ -516,11 +516,11 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     Sigma_theta_tune,
                     Sigma_theta_tune_chol,
                 )
+                theta_accept_batch = out_tuning["accept"]
+                lambda_theta = out_tuning["lambda"]
                 theta_batch = out_tuning["batch_samples"]
                 Sigma_theta_tune = out_tuning["Sigma_tune"]
                 Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
-                lambda_theta = out_tuning["lambda"]
-                theta_accept_batch = out_tuning["accept"]
             end
         end
 
@@ -583,14 +583,13 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
         if (sample_sigma)
             Threads.@threads for j in 1:(J-1)
-
                 sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
                 Sigma_star = Matrix(Hermitian(tau[j]^2 * R[j] + sigma_star^2 * I))
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
                 catch
                     @warn "The Covariance matrix for updating sigma2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Sigma_star + 1e-8 * I)
+                    cholesky(Matrix(Hermitian(Sigma_star + 1e-8 * I)))
                 end
 
                 mh1 =

@@ -128,7 +128,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
         Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun = corr_fun))) for
         v in eachcol(theta)
     ] # broadcasting over D but not theta
-    Sigma = [tau[j]^2 * R[j] for j = 1:(J-1)]
+    Sigma = [Matrix(Hermitian(tau[j]^2 * R[j])) for j = 1:(J-1)]
     R_chol = [cholesky(v) for v in R]
     Sigma_chol = copy(R_chol)
     for j = 1:(J-1)
@@ -376,7 +376,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
                 catch
                     println("theta_star = ", theta_star)
                     @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(R_star + 1e-8 * I)
+                    cholesky(Matrix(Hermitian(R_star + 1e-8 * I)))
                 end
                 Sigma_chol_star = copy(R_chol_star)
                 Sigma_chol_star.U .*= tau[j]

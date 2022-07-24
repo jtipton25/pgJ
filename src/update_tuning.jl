@@ -72,7 +72,7 @@ function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune, Sigma_tu
 	end
     end
     Sigma_tune_out = Sigma_tune + gamma1 * (batch_samples_out' * batch_samples_out / (50.0 - 1.0) - Sigma_tune)
-    Sigma_tune_chol_out = cholesky(Sigma_tune_out)
+    Sigma_tune_chol_out = cholesky(Matrix(Hermitian(Sigma_tune_out)))
     accept_out = 0.0
     batch_samples_out = zeros(batch_size, d)
     Dict{String, Any}("accept" => accept_out, "lambda" => lambda_out,

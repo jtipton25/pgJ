@@ -202,7 +202,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
     Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
-    Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
+    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
 
     if corr_fun == "matern"
         theta_accept = zeros((J - 1, 2))
@@ -210,7 +210,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
         theta_accept_batch = zeros((J - 1, 2))
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j = 1:J-1]
-        Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
+        Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
     end
 
     # tuning for rho
@@ -295,10 +295,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
             Threads.@threads for t in 1:n_time # time first XX seconds 
                 if t == 1
                     # initial time
-                   for j in 1:(J-1)
+                    for j in 1:(J-1)
                         A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
                         b =
-                        Sigma_inv[j] *
+                            Sigma_inv[j] *
                             ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                             kappa[:, j, 1]
                         eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
@@ -326,7 +326,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                         eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                     end
                 end
-            end 
+            end
         end
 
         #
@@ -376,7 +376,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                 catch
                     println("theta_star = ", theta_star)
                     @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(R_star + 1e-8 * I)
+                    cholesky(Matrix(Hermitian(R_star + 1e-8 * I)))
                 end
                 Sigma_chol_star = copy(R_chol_star)
                 Sigma_chol_star.U .*= tau[j]
