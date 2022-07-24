@@ -137,7 +137,7 @@ function pg_lm(Y, X, params)
         #
 
         if (sample_beta)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
                 A = Sigma_beta_inv + tX * (omega[:, j] .* X)
                 # A = Sigma_beta_inv + tX * (Diagonal(omega[:, j]) * X)
                 b = Sigma_beta_inv_mu_beta + tXkappa[:, j]
@@ -181,20 +181,20 @@ function pg_lm(Y, X, params)
     #out_df = DataFrame()
     ## add betas to out_df
     #for i = 1:p
-    #    for j = 1:(J-1)
+    #    for j in 1:(J-1)
     #        out_df[!, "beta[$i,$j]"] = beta_save[:, i, j]
     #    end
     #end
     ## add etas to out_df
     #for i = 1:N
-    #    for j = 1:(J-1)
+    #    for j in 1:(J-1)
     #        out_df[!, "eta[$i,$j]"] = eta_save[:, i, j]
     #    end
     #end
     #if (save_omega)
     #    # add omega to out_df
     #    for i = 1:N
-    #        for j = 1:(J-1)
+    #        for j in 1:(J-1)
     #            out_df[!, "omega[$i,$j]"] = omega_save[:, i, j]
     #        end
     #    end

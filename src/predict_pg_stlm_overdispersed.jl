@@ -19,14 +19,14 @@ function predict_pg_stlm_overdispersed(out, X, X_pred, locs, locs_pred; posterio
     beta = out["beta"]
     theta = out["theta"]
     tau2 = out["tau"].^2
-    sigma2 = out["sigma2"]
+    sigma2 = out["sigma"].^2
     eta = out["eta"]
     rho = out["rho"]
     n_samples = size(beta, 1)
     N = size(X, 1)
     n_time = size(eta, 4)
     n_pred = size(X_pred, 1)
-    J = size(beta_, 3) + 1
+    J = size(beta, 3) + 1
 
     println("Predicting new locations from MCMC. Running for ", n_samples, " iterations.")
     flush(stdout)

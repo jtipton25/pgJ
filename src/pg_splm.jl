@@ -96,10 +96,10 @@ function pg_splm(Y, X, locs, params, priors)
 
 
     R = [exp.(-D / exp(v)) for v in theta]
-    Sigma = [tau[j]^2 * R[j] for j = 1:(J-1)]
+    Sigma = [tau[j]^2 * R[j] for j in 1:(J-1)]
     R_chol = [cholesky(v) for v in R]
     Sigma_chol = copy(R_chol)
-    for j = 1:(J-1)
+    for j in 1:(J-1)
         Sigma_chol[j].U .*= tau[j]
     end
 
@@ -108,7 +108,7 @@ function pg_splm(Y, X, locs, params, priors)
 
     # initialize eta
     eta = Array{Float64}(undef, (N, J - 1))
-    for j = 1:(J-1)
+    for j in 1:(J-1)
         eta[:, j] =
             Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
     end
@@ -223,7 +223,7 @@ function pg_splm(Y, X, locs, params, priors)
         #
 
         if (sample_beta)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
                 tXSigma_inv = X' * Sigma_inv[j]
                 A = tXSigma_inv * X + Sigma_beta_inv
                 b = tXSigma_inv * eta[:, j] + Sigma_beta_inv_mu_beta
@@ -240,7 +240,7 @@ function pg_splm(Y, X, locs, params, priors)
 
         # TODO: add in Matern
         if (sample_theta)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
                 theta_star = rand(Normal(theta[j], theta_tune[j]))
                 R_star = exp.(-D ./ exp(theta_star))
                 Sigma_star = tau[j]^2 * R_star
@@ -297,7 +297,7 @@ function pg_splm(Y, X, locs, params, priors)
         #
 
         if (sample_tau)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
                 devs = eta[:, j] - Xbeta[:, j]
                 SS = devs' * (tau[j]^2 * Sigma_inv[j] * devs)
                 tau[j] = sqrt(
@@ -321,7 +321,7 @@ function pg_splm(Y, X, locs, params, priors)
         #
 
         if (sample_eta)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
 
                 # initial time
                 A = Sigma_inv[j] + Diagonal(omega[:, j])

@@ -19,14 +19,15 @@ function predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred; posterior_mean_
     beta = out["beta"]
     theta = out["theta"]
     tau2 = out["tau"].^2
-    sigma2 = out["sigma2"]
+    sigma2 = out["sigma"].^2
     eta = out["eta"]
+    psi = out["psi"]
     rho = out["rho"]
     n_samples = size(beta, 1)
     N = size(X, 1)
     n_time = size(eta, 4)
     n_pred = size(X_pred, 1)
-    J = size(beta_, 3) + 1
+    J = size(beta, 3) + 1
 
     println("Predicting new locations from MCMC. Running for ", n_samples, " iterations.")
     flush(stdout)
@@ -85,7 +86,6 @@ function predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred; posterior_mean_
                     @warn "The Covariance matrix has been mildly regularized. If this warning is rare, it should be ok to ignore it."
                 end
             end    
-            end
 
             pred_mean = Sigma_pred_obs * Sigma_inv * psi[k, :, j, :]
             if posterior_mean_only
@@ -93,7 +93,7 @@ function predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred; posterior_mean_
             else
                 psi_pred[k, :, j, :] = pred_mean + Sigma_space_chol.U' * rand(Normal(0.0, 1.0), (n_pred, n_time)) * Sigma_time_chol.U
             end
-            eta_pred[k, :, j, :] = repeat(X_pred * beta[k, :, j], inner=(1, n_time)) + psi_pred[k, :, j, :] + rand(Normal(0, sqrt(sigma2[k, j]), (n_pred, n_time)))
+            eta_pred[k, :, j, :] = repeat(X_pred * beta[k, :, j], inner=(1, n_time)) + psi_pred[k, :, j, :] + rand(Normal(0, sqrt(sigma2[k, j])), (n_pred, n_time))
            
         end
     end

@@ -56,8 +56,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
     # TODO add in custom priors for mu_beta and Sigma_beta
 
-    Sigma_beta_chol = cholesky(Sigma_beta)
-    # Sigma_beta_inv = inv(Sigma_beta_chol.U)
+    Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
     Sigma_beta_inv = inv(Sigma_beta_chol)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
@@ -119,19 +118,18 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
 
     # setup the GP covariance
-    # TODO: setup Matern covariance
     D = pairwise(Euclidean(), locs, locs, dims = 1)
 
     # R = [exp.(-D / exp(v)) for v in theta]
     R = [Matrix(Hermitian(correlation_function.(D, (exp.(v), ), corr_fun = corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
-    Sigma = [tau[j]^2 * R[j] + sigma[j]^2 * I for j = 1:(J-1)]
+    Sigma = [tau[j]^2 * R[j] + sigma[j]^2 * I for j in 1:(J-1)]
     Sigma_chol = [cholesky(v) for v in Sigma]
     Sigma_inv = [inv(v) for v in Sigma_chol]
 
 
     # initialize eta
     eta = Array{Float64}(undef, (N, J-1, n_time))
-    for j = 1:(J-1)
+    for j in 1:(J-1)
         eta[:, j, 1] =
             Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
         for t = 2:n_time
@@ -180,7 +178,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     save_omega = false
 
     # setup save variables
-    # TODO: work on adding in Matern parameters
     n_save = div(params["n_mcmc"], params["n_thin"])
     beta_save = Array{Float64}(undef, (n_save, p, J-1))
     tau_save = Array{Float64}(undef, (n_save, J-1))
@@ -283,7 +280,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_beta)
-            for j = 1:(J-1)
+            for j in 1:(J-1)
                 tXSigma_inv = X' * Sigma_inv[j]
                 # A = n_time * tXSigma_inv * X + Sigma_beta_inv
                 A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
@@ -306,36 +303,40 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_eta)
-            for j = 1:(J-1)
-
+            Threads.@threads for t in 1:n_time # time first XX seconds 
+            if t == 1 
                 # initial time
-                A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                b =
-                    Sigma_inv[j] *
-                    ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                    kappa[:, j, 1]
-                eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-                for t = 2:(n_time-1)
+                for j in 1:(J-1)     
+                    A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                    b =
+                        Sigma_inv[j] *
+                        ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                        kappa[:, j, 1]
+                    eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                end
+            elseif t == n_time
+                # final time
+                for j in 1:(J-1)
+                    A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
+                    b =
+                        Sigma_inv[j] *
+                            ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
+                        kappa[:, j, n_time]
+                    eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                end
+            else
+                # middle times
+                for j in 1:(J-1)
                     A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
                     b =
                         Sigma_inv[j] * (
-                            (1.0 - rho[j])^2 * Xbeta[:, j] +
-                            rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
+                        (1.0 - rho[j])^2 * Xbeta[:, j] +
+                        rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
                         ) + 
                         kappa[:, j, t]
-                    eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                 end
-
-                # final time
-                A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
-                b =
-                    Sigma_inv[j] *
-                        ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
-                    kappa[:, j, n_time]
-                eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-            end
+            end 
         end
 
         #
@@ -343,7 +344,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_tau)
-            for j = 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
                 tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
                 Sigma_star = tau_star^2 * R[j] + sigma[j]^2 * I
                 Sigma_chol_star = try
@@ -415,9 +416,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         # sample theta
         #
 
-        # TODO: add in Matern
         if (sample_theta)
-            for j = 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
                 theta_star = rand(MvNormal(theta[:, j], lambda_theta[j] * PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])))
                 # R_star = exp.(-D / exp(theta_star))
                 R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star), ), corr_fun = corr_fun))) # broadcasting over D but not theta_star
@@ -506,7 +506,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_rho)
-            for j = 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
@@ -558,7 +558,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_sigma)
-            for j = 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
 
                 sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
                 Sigma_star = tau[j]^2 * R[j] + sigma_star^2 * I
