@@ -44,14 +44,16 @@ params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "
 # params = Dict{String, Int64}("n_adapt" => 5000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
-        "mean_range" => [-2, -2], "sd_range" => [1, 10],
+        "mean_range" => [-2, -2], "sd_range" => [2, 2],
 	    "alpha_tau" => 0.1, "beta_tau" => 0.1,
         "alpha_sigma" => 1, "beta_sigma" => 1,
  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
 
 if (!isfile("output/pollen/pollen_latent_fit.jld"))
     BLAS.set_num_threads(32);
-    out = pg_stlm_latent(Y, X, locs, params, priors, corr_fun="matern"); # 77 minutes before revising code
+    out = pg_stlm_latent(Y, X, locs, params, priors, corr_fun="matern"); 
+    # 77 minutes before revising code
+    # 29 minutes after revising code
     println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
 
     save("output/pollen/pollen_latent_fit.jld", "data", out);

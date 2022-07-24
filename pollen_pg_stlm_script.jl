@@ -44,7 +44,7 @@ params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "
 # params = Dict{String, Int64}("n_adapt" => 5000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
-       	"mean_range" => [-2, -2], "sd_range" => [2, 10],
+       	"mean_range" => [-2, -2], "sd_range" => [2, 2],
 	    "alpha_tau" => 0.1, "beta_tau" => 0.1,
  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
 

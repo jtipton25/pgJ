@@ -12,7 +12,7 @@ Return the MCMC output for a linear model with A 2-D Array of observations of In
 function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
     tic = now()
-    
+
     # check input (TODO)
     # check params (TODO)
 
@@ -23,10 +23,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
     tX = X'
 
-    Mi = Array{Int64}(undef, (N, J-1, n_time))
-    kappa = Array{Float64}(undef, (N, J-1, n_time))
+    Mi = Array{Int64}(undef, (N, J - 1, n_time))
+    kappa = Array{Float64}(undef, (N, J - 1, n_time))
     missing_idx = Array{Bool}(undef, (N, n_time))
-    nonzero_idx = Array{Bool}(undef, (N, J-1, n_time))
+    nonzero_idx = Array{Bool}(undef, (N, J - 1, n_time))
     for t = 1:n_time
         for i = 1:N
             Mi[i, :, t] = calc_Mi(Y[i, :, t])
@@ -71,7 +71,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
     # @time beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta)), J-1);
 
     # initialize beta
-    beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J-1)
+    beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J - 1)
     # TODO: check if initial values are supplied
 
     # initialize Xbeta
@@ -94,30 +94,30 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
     end
 
     theta_mean = priors["mean_range"]
-    theta_var = priors["sd_range"].^2
+    theta_var = priors["sd_range"] .^ 2
 
-    theta = rand(MvNormal(theta_mean, diagm(theta_var)), J-1)
+    theta = rand(MvNormal(theta_mean, diagm(theta_var)), J - 1)
     theta[theta.<-2] .= -2
     theta[theta.>0.1] .= 0.1
     # TODO: check if initial values are supplied
 
     # initilaize tau
-    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J-1)
+    tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J - 1)
     tau[tau.>10] .= 10
 
     # TODO: check if initial values are supplied
 
     # initialize rho
-    rho = rand(Uniform(0, 1), J-1)
+    rho = rand(Uniform(0, 1), J - 1)
 
     # TODO: check if initial values are supplied
 
 
     # setup the GP covariance
-    D = pairwise(Euclidean(), locs, locs, dims = 1)
+    D = pairwise(Euclidean(), locs, locs, dims=1)
 
     # R = [Matrix(Hermitian(exp.(-D / exp(v)))) for v in theta]
-    R = [Matrix(Hermitian(correlation_function.(D, (exp.(v), ), corr_fun = corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
+    R = [Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
     Sigma = [tau[j]^2 * R[j] for j in 1:(J-1)]
     R_chol = [cholesky(v) for v in R]
     Sigma_chol = copy(R_chol)
@@ -129,7 +129,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
 
     # initialize eta
-    eta = Array{Float64}(undef, (N, J-1, n_time))
+    eta = Array{Float64}(undef, (N, J - 1, n_time))
     for j in 1:(J-1)
         eta[:, j, 1] =
             Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
@@ -142,7 +142,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
     # initialize omega
 
-    omega = zeros(N, J-1, n_time)
+    omega = zeros(N, J - 1, n_time)
     Mi_nonzero = Mi[nonzero_idx]
     eta_nonzero = eta[nonzero_idx]
 
@@ -179,17 +179,17 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
     # setup save variables
     n_save = div(params["n_mcmc"], params["n_thin"])
-    beta_save = Array{Float64}(undef, (n_save, p, J-1))
-    tau_save = Array{Float64}(undef, (n_save, J-1))
-    rho_save = Array{Float64}(undef, (n_save, J-1))
-    theta_save = Array{Float64}(undef, (n_save, J-1))
+    beta_save = Array{Float64}(undef, (n_save, p, J - 1))
+    tau_save = Array{Float64}(undef, (n_save, J - 1))
+    rho_save = Array{Float64}(undef, (n_save, J - 1))
+    theta_save = Array{Float64}(undef, (n_save, J - 1))
     if corr_fun == "matern"
-        theta_save = Array{Float64}(undef, (n_save, J-1, 2))
+        theta_save = Array{Float64}(undef, (n_save, J - 1, 2))
     end
-    eta_save = Array{Float64}(undef, (n_save, N, J-1, n_time))
+    eta_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
     pi_save = Array{Float64}(undef, (n_save, N, J, n_time))
     if (save_omega)
-        omega_save = Array{Float64}(undef, (n_save, N, J-1, n_time))
+        omega_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
     end
 
     #
@@ -197,26 +197,26 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
     #
 
     # tuning for theta
-    theta_accept = zeros(J-1)
-    lambda_theta = 0.5 * ones(J-1)
-    theta_accept_batch = zeros(J-1)
-    theta_batch = Array{Float64}(undef, 50, J-1)
-    Sigma_theta_tune = [1.8 * diagm([1]) .- 0.8 for j in 1:J-1]  
+    theta_accept = zeros(J - 1)
+    lambda_theta = 0.5 * ones(J - 1)
+    theta_accept_batch = zeros(J - 1)
+    theta_batch = Array{Float64}(undef, 50, J - 1)
+    Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
     Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
 
     if corr_fun == "matern"
-        theta_accept = zeros((J-1, 2))
-        lambda_theta = 0.5 * ones(J-1)
-        theta_accept_batch = zeros((J-1, 2))
-        theta_batch = Array{Float64}(undef, 50, J-1, 2)
-        Sigma_theta_tune = [1.8 * diagm(ones(2)) .- 0.8 for j in 1:J-1]  
+        theta_accept = zeros((J - 1, 2))
+        lambda_theta = 0.5 * ones(J - 1)
+        theta_accept_batch = zeros((J - 1, 2))
+        theta_batch = Array{Float64}(undef, 50, J - 1, 2)
+        Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j = 1:J-1]
         Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
     end
 
     # tuning for rho
-    rho_accept = zeros(J-1)
-    rho_accept_batch = zeros(J-1)
-    rho_tune = 0.025 * ones(J-1)
+    rho_accept = zeros(J - 1)
+    rho_accept_batch = zeros(J - 1)
+    rho_tune = 0.025 * ones(J - 1)
 
 
     println(
@@ -233,12 +233,12 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
 
         if (k == params["n_adapt"] + 1)
             println("Starting MCMC fitting. Running for ", params["n_mcmc"], " iterations")
-	    flush(stdout)
+            flush(stdout)
         end
         if (mod(k, params["n_message"]) == 0)
             if (k <= params["n_adapt"])
                 println("MCMC adaptation iteration ", k, " out of ", params["n_adapt"])
-		flush(stdout)	 
+                flush(stdout)
             else
                 println(
                     "MCMC fitting iteration ",
@@ -246,7 +246,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                     " out of ",
                     params["n_mcmc"],
                 )
-		flush(stdout)
+                flush(stdout)
             end
         end
 
@@ -275,10 +275,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                 b = dropdims(
                     # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
                     # sum(rho[j] * tXSigma_inv * eta[:, j, 2:n_time], dims = 2) + Sigma_beta_inv_mu_beta, 
-                    tXSigma_inv * eta[:, j, 1] + 
-                    sum((1 - rho[j]) * tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims = 2) + 
-                    Sigma_beta_inv_mu_beta, 
-                    dims = 2,
+                    tXSigma_inv * eta[:, j, 1] +
+                    sum((1 - rho[j]) * tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims=2) +
+                    Sigma_beta_inv_mu_beta,
+                    dims=2,
                 )
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
@@ -292,47 +292,13 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
         #
 
         if (sample_eta)
-            for j in 1:(J-1)
-
-                # initial time
-                A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                b =
-                    Sigma_inv[j] * 
-                    ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                    kappa[:, j, 1]
-                eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-                for t = 2:(n_time-1)
-                    A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
-                    b =
-                        Sigma_inv[j] * (
-                            (1.0 - rho[j])^2 * Xbeta[:, j] +
-                            rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
-                        ) + 
-                        kappa[:, j, t]
-                    eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-                end
-
-                # final time
-                A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
-                b =
-                    Sigma_inv[j] * 
-                        ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +       
-                    kappa[:, j, n_time]
-                eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-
-            end
-
-
-
-
             Threads.@threads for t in 1:n_time # time first XX seconds 
-                if t == 1 
+                if t == 1
                     # initial time
-                    for j in 1:(J-1)     
+                   for j in 1:(J-1)
                         A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
                         b =
-                            Sigma_inv[j] * 
+                        Sigma_inv[j] *
                             ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                             kappa[:, j, 1]
                         eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
@@ -342,8 +308,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                     for j in 1:(J-1)
                         A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
                         b =
-                            Sigma_inv[j] * 
-                            ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +       
+                            Sigma_inv[j] *
+                            ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
                             kappa[:, j, n_time]
                         eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                     end
@@ -355,13 +321,14 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                             Sigma_inv[j] * (
                                 (1.0 - rho[j])^2 * Xbeta[:, j] +
                                 rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
-                            ) + 
+                            ) +
                             kappa[:, j, t]
                         eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                     end
-                end 
+                end
+            end 
         end
-        
+
         #
         # Sample tau
         #
@@ -373,7 +340,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                 for t = 2:n_time
                     devs[:, t] =
                         eta[:, j, t] - rho[j] * eta[:, j, t-1] - (1.0 - rho[j]) * Xbeta[:, j]
-                        # eta[:, j, t] - Xbeta[:, j] - rho[j] * eta[:, j, t-1]
+                    # eta[:, j, t] - Xbeta[:, j] - rho[j] * eta[:, j, t-1]
                 end
                 SS = sum([
                     devs[:, t]' * (tau[j]^2 * Sigma_inv[j] * devs[:, t]) for t = 1:n_time
@@ -399,10 +366,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
         #
 
         if (sample_theta)
-           Threads.@threads for j in 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
                 theta_star = rand(MvNormal(theta[:, j], lambda_theta[j] * PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])))
                 #R_star = Matrix(Hermitian(exp.(-D / exp(theta_star))))
-                R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star), ), corr_fun = corr_fun))) # broadcasting over D but not theta_star
+                R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun))) # broadcasting over D but not theta_star
                 Sigma_star = tau[j]^2 * R_star
                 R_chol_star = try
                     cholesky(R_star)
@@ -428,7 +395,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                         ) for t = 2:n_time
                     ]) +
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
-                    
+
 
                 mh2 =
                     logpdf(
@@ -548,7 +515,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
                 beta_save[save_idx, :, :, :] = beta
                 eta_save[save_idx, :, :, :] = eta
                 theta_save[save_idx, :, :] = theta'
-                tau_save[save_idx, :] = tau 
+                tau_save[save_idx, :] = tau
                 rho_save[save_idx, :] = rho
                 if (save_omega)
                     omega_save[save_idx, :, :] = omega
@@ -580,7 +547,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential")
             "theta_accept" => theta_accept,
             "rho_accept" => rho_accept,
             "runtime" => Int(Dates.value(toc - tic)) # milliseconds runtime as an Int
-            
         )
     else
         out = Dict(
