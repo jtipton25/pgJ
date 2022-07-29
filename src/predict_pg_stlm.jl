@@ -6,21 +6,25 @@ include("correlation_function.jl")
 export predict_pg_stlm
 
 """
-    predict_pg_stlm(out, X, X_pred, locs, locs_pred;, posterior_mean_only=false, n_message=50)
+    predict_pg_stlm(out, X_pred, locs, locs_pred;, posterior_mean_only=false, n_message=50)
 
-Return the predictions at unobserved locations `locs_pred` with covariate values `X_pred` given MCMC model output `out` fitted at observed locations `locs` with observed covariates `X`. For reduced computational effort, only the posterior mean predictions can be made by setting `posterior_mean_only` to `true`.
+Return the predictions at unobserved locations `locs_pred` with covariate values `X_pred` given MCMC model output `out`. For reduced computational effort, only the posterior mean predictions can be made by setting `posterior_mean_only` to `true`.
 """
-function predict_pg_stlm(out, X, X_pred, locs, locs_pred; posterior_mean_only=false, n_message = 50)
+function predict_pg_stlm(out, X_pred, locs_pred; posterior_mean_only=false, n_message = 50)
     # TODO: add in class/object oriented form
     
     tic = now()
 
+    X = out["X"]
+    locs = out["locs"]
     corr_fun = out["corr_fun"]
+
     beta = out["beta"]
     theta = out["theta"]
-    tau2 = out["tau"].^2
+    tau2 = out["tau"]
     eta = out["eta"]
     rho = out["rho"]
+        
     n_samples = size(beta, 1)
     N = size(X, 1)
     n_time = size(eta, 4)
@@ -69,7 +73,7 @@ function predict_pg_stlm(out, X, X_pred, locs, locs_pred; posterior_mean_only=fa
             Sigma_chol = try 
                 cholesky(Sigma)
             catch
-                cholesky(Sigma + 1e-8 * I)
+                cholesky(Sigma + 1e-6 * I)
                 @warn "The Covariance matrix has been mildly regularized. If this warning is rare, it should be ok to ignore it."
             end
             # Sigma_inv = inv(Sigma_chol.U)
@@ -80,7 +84,7 @@ function predict_pg_stlm(out, X, X_pred, locs, locs_pred; posterior_mean_only=fa
                     cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs')))                
                 catch
                     @warn "The Covariance matrix has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs' + 1e-8 * I)))   
+                    cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs' + 1e-6 * I)))   
                 end
             end
 

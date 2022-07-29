@@ -10,7 +10,7 @@ export pg_stlm_latent
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
+function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_latent_fit.jld")
 
     tic = now()
 
@@ -21,6 +21,102 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     J = size(Y, 2)
     n_time = size(Y, 3)
     p = size(X, 2)
+
+    checkpoints = collect(1:params["n_save"]:(params["n_adapt"]+params["n_mcmc"]))
+    if checkpoints[end] != params["n_adapt"] + params["n_mcmc"]
+        push!(checkpoints, params["n_adapt"] + params["n_mcmc"] + 1)
+    end
+
+    # load the file if it exists
+    beta_init = nothing
+    eta_init = nothing
+    omega_init = nothing
+    theta_init = nothing
+    tau_init = nothing
+    sigma_init = nothing
+    rho_init = nothing
+    rho_accept_init = nothing
+    theta_accept_init = nothing
+    lambda_theta_init = nothing
+    Sigma_theta_tune_init = nothing
+    Sigma_theta_tune_chol_init = nothing
+    rho_tune_init = nothing
+
+    if isfile(path)
+        out = load(path)
+
+        # load the last MCMC output values
+        beta_init = out["beta"][out["k"][end], :, :]
+        eta_init = out["eta"][out["k"][end], :, :, :]
+        omega_init = out["omega"][out["k"][end], :, :, :]
+        if corr_fun == "matern"
+            theta_init = out["theta"][out["k"][end], :, :]'
+        else
+            theta_init = out["theta"][out["k"][end], :]
+        end
+        tau_init = out["tau"][out["k"][end], :]
+        sigma_init = out["sigma"][out["k"][end], :]
+        rho_init = out["rho"][out["k"][end], :]
+
+        # need to recover the current tuning values
+        theta_accept_init = out["theta_accept"]
+        lambda_theta_init = out["lambda_theta"]
+        Sigma_theta_tune_init = out["Sigma_theta_tune"]
+        Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
+        rho_accept_init = out["rho_accept"]
+        rho_tune_init = out["rho_tune"]
+    else
+        # initialize the Dict
+        out = Dict(
+            "k" => Array{Int64}(undef, 0),
+            "checkpoint_idx" => Array{Int64}(undef, 0),
+            "beta" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], p, J - 1)),
+            "eta" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], N, J - 1, n_time)),
+            "omega" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], N, J - 1, n_time)),
+            "theta" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1)),
+            "tau" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1)),
+            "pi" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], N, J, n_time)),
+            "rho" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1)),
+            "corr_fun" => corr_fun,
+            "theta_accept" => 0,
+            "lambda_theta" => Array{Float64}(undef, J - 1),
+            "Sigma_theta_tune" => [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
+            "rho_accept" => 0,
+            "Y" => Y,
+            "X" => X,
+            "locs" => locs,
+            "params" => params,
+            "priors" => priors,
+            "runtime" => Int(0) # milliseconds runtime as an Int
+        )
+        out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+
+        if corr_fun == "matern"
+            out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
+            out["lambda_theta"] = Array{Float64}(undef, J - 1, 2)
+            out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
+            out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+        end
+    end
+
+    #
+    # return the MCMC output if the MCMC has fully run
+    #
+    if !isempty(out["k"])
+        if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
+            return (out)
+        end
+    end
+
+    # setup the checkpoints
+    checkpoint_idx = 1
+    if !isempty(out["checkpoint_idx"])
+        checkpoint_idx = out["checkpoint_idx"][end] + 1
+    end
+    k_start = 1
+    if !isempty(out["k"])
+        k_start = out["k"][end] + 1
+    end
 
     tX = X'
     tXX = tX * X
@@ -74,7 +170,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
 
     # initialize beta
     beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J - 1)
-    # TODO: check if initial values are supplied
+    if !isnothing(beta_init)
+        beta = copy(beta_init)
+    end
 
     # initialize Xbeta
     Xbeta = X * beta
@@ -82,6 +180,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     # initialize sigma
     sigma = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J - 1)
     sigma[sigma.>5] .= 5
+    if !isnothing(sigma_init)
+        sigma = copy(sigma_init)
+    end
 
     # initialize theta (log-scale)
     if corr_fun == "exponential"
@@ -105,27 +206,33 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     theta = rand(MvNormal(theta_mean, diagm(theta_var)), J - 1)
     theta[theta.<-2] .= -2
     theta[theta.>0.1] .= 0.1
-    # TODO: check if initial values are supplied
+    if !isnothing(theta_init)
+        theta = copy(theta_init)
+    end
 
     # initilaize tau
     tau = rand(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), J - 1)
     tau[tau.>10] .= 10
-
-    # TODO: check if initial values are supplied
+    if !isnothing(tau_init)
+        tau = copy(tau_init)
+    end
 
     # initialize rho
     rho = rand(Uniform(0, 1), J - 1)
+    if !isnothing(rho_init)
+        rho = copy(rho_init)
+    end
 
     # TODO: check if initial values are supplied
 
 
     # setup the GP covariance
-    D = pairwise(Euclidean(), locs, locs, dims = 1)
+    D = pairwise(Euclidean(), locs, locs, dims=1)
 
 
     # R = [exp.(-D / exp(v)) for v in theta]
     R = [
-        Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun = corr_fun))) for
+        Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for
         v in eachcol(theta)
     ] # broadcasting over D but not theta
     Sigma = [Matrix(Hermitian(tau[j]^2 * R[j])) for j in 1:(J-1)]
@@ -155,6 +262,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
             eta[:, j, t] = Xbeta[:, j] + psi[:, j, t] + rand(Normal(0, sigma[j]), N)
         end
     end
+    if !isnothing(eta_init)
+        eta = copy(eta_init)
+    end
 
     # initialize omega
 
@@ -179,8 +289,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     omega[nonzero_idx] = ThreadsX.collect(
         rand(PolyaGamma(Mi_nonzero[i], eta_nonzero[i])) for i = 1:n_nonzero
     )
-
-    # TODO: check if initial values for omega are supplied
+    if !isnothing(omega_init)
+        omega = copy(omega_init)
+    end
 
 
 
@@ -193,7 +304,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     sample_theta = true
     sample_eta = true
     sample_psi = true
-    save_omega = false
 
     # setup save variables
     n_save = div(params["n_mcmc"], params["n_thin"])
@@ -208,9 +318,8 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
     eta_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
     psi_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
     pi_save = Array{Float64}(undef, (n_save, N, J, n_time))
-    if (save_omega)
-        omega_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
-    end
+    omega_save = Array{Float64}(undef, (n_save, N, J - 1, n_time))
+
 
     #
     # MCMC tuning
@@ -218,6 +327,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
 
     # tuning for theta
     theta_accept = zeros(J - 1)
+    if !isnothing(theta_accept_init)
+        theta_accept = copy(theta_accept_init)
+    end
     lambda_theta = 0.5 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
@@ -232,11 +344,26 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
         Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
     end
+    if !isnothing(lambda_theta_init)
+        lambda_theta = copy(lambda_theta_init)
+    end
+    if !isnothing(Sigma_theta_tune_init)
+        Sigma_theta_tune = copy(Sigma_theta_tune_init)
+    end
+    if !isnothing(Sigma_theta_tune_chol_init)
+        Sigma_theta_tune_chol = copy(Sigma_theta_tune_chol_init)
+    end
 
     # tuning for rho
     rho_accept = zeros(J - 1)
+    if !isnothing(rho_accept_init)
+        rho_accept = copy(rho_accept_init)
+    end
     rho_accept_batch = zeros(J - 1)
     rho_tune = 0.025 * ones(J - 1)
+    if !isnothing(rho_tune_init)
+        rho_tune = copy(rho_tune_init)
+    end
 
     println(
         "Starting MCMC. Running for ",
@@ -292,9 +419,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
             for j in 1:(J-1)
                 A = n_time * tXX / (sigma[j]^2) + Sigma_beta_inv
                 b = dropdims(
-                    sum(tX * (eta[:, j, :] - psi[:, j, :]), dims = 2) / (sigma[j]^2) +
+                    sum(tX * (eta[:, j, :] - psi[:, j, :]), dims=2) / (sigma[j]^2) +
                     Sigma_beta_inv_mu_beta,
-                    dims = 2,
+                    dims=2,
                 )
                 beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
             end
@@ -367,7 +494,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
                 # R_star = exp.(-D / exp(theta_star))
                 R_star = Matrix(
                     Hermitian(
-                        correlation_function.(D, (exp.(theta_star),), corr_fun = corr_fun),
+                        correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
                     ),
                 ) # broadcasting over D but not theta_star
                 Sigma_star = tau[j]^2 * R_star
@@ -573,23 +700,52 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
         # Save MCMC parameters
         #
 
-        if (k > params["n_adapt"])
-            if (mod(k, params["n_thin"]) == 0)
-                save_idx = div(k - params["n_adapt"], params["n_thin"])
-                beta_save[save_idx, :, :, :] = beta
-                eta_save[save_idx, :, :, :] = eta
-                psi_save[save_idx, :, :, :] = psi
-                theta_save[save_idx, :, :] = theta'
-                tau_save[save_idx, :] = tau
-                sigma_save[save_idx, :] = sigma
-                rho_save[save_idx, :] = rho
-                if (save_omega)
-                    omega_save[save_idx, :, :] = omega
-                end
-                for t = 1:n_time
-                    pi_save[save_idx, :, :, t] =
-                        reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
-                end
+        if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
+            save_idx = k-checkpoints[checkpoint_idx]+1
+            k_vec[save_idx] = k
+            beta_save[save_idx, :, :, :] = beta
+            eta_save[save_idx, :, :, :] = eta
+            psi_save[save_idx, :, :, :] = psi
+            theta_save[save_idx, :, :] = theta'
+            tau_save[save_idx, :] = tau
+            sigma_save[save_idx, :] = sigma
+            rho_save[save_idx, :] = rho
+            omega_save[save_idx, :, :] = omega
+            for t = 1:n_time
+                pi_save[save_idx, :, :, t] =
+                    reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+            end
+        end
+
+        #
+        # save as file
+        #
+        
+        if k == (checkpoints[checkpoint_idx + 1] - 1)
+            append!(out["k"], k_vec)
+            append!(out["checkpoint_idx"], checkpoint_idx)
+            out["beta"][k_vec, :, :] = beta_save
+            out["eta"][k_vec, :, :, :] = eta_save
+            out["psi"][k_vec, :, :, :] = psi_save
+            out["omega"][k_vec, :, :, :] = omega_save
+            out["theta"][k_vec, :, :] = theta_save
+            out["tau"][k_vec, :] = tau_save
+            out["sigma"][k_vec, :] = sigma_save
+            out["rho"][k_vec, :] = rho_save
+            out["pi"][k_vec, :, :, :] = pi_save
+            out["rho_accept"] = rho_accept
+            out["rho_tune"] = rho_tune
+            out["theta_accept"] = theta_accept
+            out["lambda_theta"] = lambda_theta
+            out["Sigma_theta_tune"] = Sigma_theta_tune
+            out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
+            
+            toc = now()
+            out["runtime"] += Int(Dates.value(toc - tic))
+            tic = now()
+            save(path, out)
+            if (k !== (params["n_adapt"] + params["n_mcmc"]))
+                checkpoint_idx += 1
             end
         end
     end
@@ -600,64 +756,64 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun = "exponential")
 
     toc = now()
 
-    if (save_omega)
-        out = Dict(
-            "beta" => beta_save,
-            "eta" => eta_save,
-            "psi" => psi_save,
-            "omega" => omega_save,
-            "theta" => theta_save,
-            "tau" => tau_save,
-            "sigma" => sigma_save,
-            "pi" => pi_save,
-            "rho" => rho_save,
-            "corr_fun" => corr_fun,
-            "theta_accept" => theta_accept,
-            "rho_accept" => rho_accept,
-            "runtime" => Int(Dates.value(toc - tic)), # milliseconds runtime as an Int
-        )
-    else
-        out = Dict(
-            "beta" => beta_save,
-            "eta" => eta_save,
-            "psi" => psi_save,
-            "theta" => theta_save,
-            "tau" => tau_save,
-            "sigma" => sigma_save,
-            "pi" => pi_save,
-            "rho" => rho_save,
-            "corr_fun" => corr_fun,
-            "theta_accept" => theta_accept,
-            "rho_accept" => rho_accept,
-            "runtime" => Int(Dates.value(toc - tic)), # milliseconds runtime as an Int
-        )
-    end
+    # if (save_omega)
+    #     out = Dict(
+    #         "beta" => beta_save,
+    #         "eta" => eta_save,
+    #         "psi" => psi_save,
+    #         "omega" => omega_save,
+    #         "theta" => theta_save,
+    #         "tau" => tau_save,
+    #         "sigma" => sigma_save,
+    #         "pi" => pi_save,
+    #         "rho" => rho_save,
+    #         "corr_fun" => corr_fun,
+    #         "theta_accept" => theta_accept,
+    #         "rho_accept" => rho_accept,
+    #         "runtime" => Int(Dates.value(toc - tic)), # milliseconds runtime as an Int
+    #     )
+    # else
+    #     out = Dict(
+    #         "beta" => beta_save,
+    #         "eta" => eta_save,
+    #         "psi" => psi_save,
+    #         "theta" => theta_save,
+    #         "tau" => tau_save,
+    #         "sigma" => sigma_save,
+    #         "pi" => pi_save,
+    #         "rho" => rho_save,
+    #         "corr_fun" => corr_fun,
+    #         "theta_accept" => theta_accept,
+    #         "rho_accept" => rho_accept,
+    #         "runtime" => Int(Dates.value(toc - tic)), # milliseconds runtime as an Int
+    #     )
+    # end
 
 
-    #    # convert Dict to DataFrame
-    #    out_df = DataFrame()
-    #    # add betas to out_df
-    #    for i in 1:p
-    #    	for j in 1:(J-1)
-    #	  out_df[!, "beta[$i,$j]"] = beta_save[:, i, j]
-    #	end
-    #    end
-    #    # add etas to out_df
-    #    for i in 1:N
-    #    	for j in 1:(J-1)
-    #          out_df[!, "eta[$i,$j]"] = eta_save[:, i, j]
-    #	end
-    #    end
-    #    if (save_omega)
-    #        # add omega to out_df
-    #        for i in 1:N
-    #            for j in 1:(J-1)
-    #                out_df[!, "omega[$i,$j]"] = omega_save[:, i, j]
-    #	    end
-    #	end
-    #    end
-    #
-    #    return(out_df)
+    # #    # convert Dict to DataFrame
+    # #    out_df = DataFrame()
+    # #    # add betas to out_df
+    # #    for i in 1:p
+    # #    	for j in 1:(J-1)
+    # #	  out_df[!, "beta[$i,$j]"] = beta_save[:, i, j]
+    # #	end
+    # #    end
+    # #    # add etas to out_df
+    # #    for i in 1:N
+    # #    	for j in 1:(J-1)
+    # #          out_df[!, "eta[$i,$j]"] = eta_save[:, i, j]
+    # #	end
+    # #    end
+    # #    if (save_omega)
+    # #        # add omega to out_df
+    # #        for i in 1:N
+    # #            for j in 1:(J-1)
+    # #                out_df[!, "omega[$i,$j]"] = omega_save[:, i, j]
+    # #	    end
+    # #	end
+    # #    end
+    # #
+    # #    return(out_df)
 
     return (out)
 

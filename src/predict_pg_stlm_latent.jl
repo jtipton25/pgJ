@@ -72,7 +72,7 @@ function predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred; posterior_mean_
             Sigma_chol = try 
                 cholesky(Sigma)
             catch
-                cholesky(Sigma + 1e-8 * I)
+                cholesky(Sigma + 1e-6 * I)
                 @warn "The Covariance matrix has been mildly regularized. If this warning is rare, it should be ok to ignore it."
             end
             # Sigma_inv = inv(Sigma_chol.U)
@@ -82,7 +82,7 @@ function predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred; posterior_mean_
                 Sigma_space_chol = try 
                     cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs')))                
                 catch
-                    cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs' + 1e-8 * I)))
+                    cholesky(Matrix(Hermitian(Sigma_pred - Sigma_pred_obs * Sigma_inv * Sigma_pred_obs' + 1e-6 * I)))
                     @warn "The Covariance matrix has been mildly regularized. If this warning is rare, it should be ok to ignore it."
                 end
             end    

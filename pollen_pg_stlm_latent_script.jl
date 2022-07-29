@@ -19,7 +19,8 @@ include("src/calc_Mi.jl")
 include("src/calc_kappa.jl")
 include("src/polyagamma.jl")
 include("src/update_tuning.jl")
-include("src/pg_stlm_latent.jl")
+# include("src/pg_stlm_latent.jl")
+include("src/pg_stlm_latent_checkpoint.jl")
 include("src/predict_pg_stlm_latent.jl")
 
 Threads.nthreads()
@@ -40,8 +41,8 @@ locs = load("./data/pollen_locs_5.0.h5")["locs"];
 rescale = 1e4
 locs = locs / rescale
 
-params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 50);
-# params = Dict{String, Int64}("n_adapt" => 5000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50);
+# params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 50);
+params = Dict{String, Int64}("n_adapt" => 5000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "n_save" => 200);
 
 priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0 .* ones(p)),
         "mean_range" => [-2, -2], "sd_range" => [2, 2],
@@ -49,38 +50,40 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
         "alpha_sigma" => 1, "beta_sigma" => 1,
  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
 
-if (!isfile("output/pollen/pollen_latent_fit.jld"))
+# if (!isfile("output/pollen/pollen_latent_fit.jld"))
     BLAS.set_num_threads(32);
-    out = pg_stlm_latent(Y, X, locs, params, priors, corr_fun="matern"); 
+    out = pg_stlm_latent(Y, X, locs, params, priors, corr_fun="matern", path = "./output/pollen/pollen_latent_fit.jld"); 
     # 77 minutes before revising code
     # 29 minutes after revising code
-    println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
+#     println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
 
-    save("output/pollen/pollen_latent_fit.jld", "data", out);
-    #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-    R"saveRDS($out, file = 'output/pollen/pollen_latent_fit.RDS', compress = FALSE)";
-else
-    println("Loading saved model output from pollen_pg_stlm_latent")
-    flush(stdout)
-    out = load("output/pollen/pollen_latent_fit.jld")["data"];
-end
+#     save("output/pollen/pollen_latent_fit.jld", "data", out);
+#     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
+#     R"saveRDS($out, file = 'output/pollen/pollen_latent_fit.RDS', compress = FALSE)";
+# else
+#     println("Loading saved model output from pollen_pg_stlm_latent")
+#     flush(stdout)
+#     out = load("output/pollen/pollen_latent_fit.jld")["data"];
+# end
 
-#
-# prediction
-#
+# #
+# # prediction
+# #
 
-locs_pred = Matrix(load("./data/grid_5.0.rds"));
-locs_pred = locs_pred / rescale;
-X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
+# out = subset_posterior(out, model="latent")
 
-if (!isfile("output/pollen/pollen_latent_predictions.jld"))
-    BLAS.set_num_threads(32);
-    preds = predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred, n_message = 50); 
+# locs_pred = Matrix(load("./data/grid_5.0.rds"));
+# locs_pred = locs_pred / rescale;
+# X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
-    save("output/pollen/pollen_latent_predictions.jld", "data", preds);
-    #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-    R"saveRDS($preds, file = 'output/pollen/pollen_latent_predictions.RDS', compress = FALSE)";
-end
+# if (!isfile("output/pollen/pollen_latent_predictions.jld"))
+#     BLAS.set_num_threads(32);
+#     preds = predict_pg_stlm_latent(out, X, X_pred, locs, locs_pred, n_message = 50); 
+
+#     save("output/pollen/pollen_latent_predictions.jld", "data", preds);
+#     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
+#     R"saveRDS($preds, file = 'output/pollen/pollen_latent_predictions.RDS', compress = FALSE)";
+# end
 
 
 
