@@ -61,11 +61,22 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
         println("Model fitting took ",  out["runtime"]/(60*60*1000), " hours")
     end
 
-    alert("Finished Matern fitting")
+    # alert("Finished Matern fitting")
 
     # save("output/pollen/pollen_matern_fit.jld", "data", out);
     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-    R"saveRDS($out, file = 'output/pollen/pollen_matern_fit.rds', compress = FALSE)";
+
+    # out["Sigma_theta_tune_chol"] = nothing
+    # out["Sigma_theta_tune"] = nothing
+    setindex!(out, X, "X")
+    setindex!(out, Y, "Y")
+    setindex!(out, locs, "locs")
+
+    # out["X"] = X
+    # out["Y"] = Y
+    # out["locs"] = locs
+    # R"saveRDS($out, file = 'output/pollen/pollen_matern_fit.rds', compress = FALSE)";
+
 # else
     # println("Loading saved model output from pollen_pg_stlm")
     # flush(stdout)
@@ -84,9 +95,9 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 # if (!isfile("output/pollen/pollen_matern_predictions.jld"))
     BLAS.set_num_threads(32);
-    preds = predict_pg_stlm(out, X_pred, locs_pred, n_message = 50); 
+    preds = predict_pg_stlm(out, X_pred, locs_pred, n_message = 1, n_save=10); 
 
-    save("output/pollen/pollen_matern_predictions.jld", "data", preds);
+    # save("output/pollen/pollen_matern_predictions.jld", "data", preds);
 #     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
     R"saveRDS($preds, file = 'output/pollen/pollen_matern_predictions.RDS', compress = FALSE)";
 

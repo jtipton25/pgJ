@@ -53,6 +53,21 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 # if (!isfile("output/pollen/pollen_overdispersed_fit.jld"))
     BLAS.set_num_threads(32);
     out = pg_stlm_overdispersed(Y, X, locs, params, priors, corr_fun="matern", path = "./output/pollen/pollen_overdispersed_fit.jld"); 
+
+    if (out["runtime"] / (60*1000) < 120)
+        println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
+    else
+        println("Model fitting took ",  out["runtime"]/(60*60*1000), " hours")
+    end
+
+
+    setindex!(out, X, "X")
+    setindex!(out, Y, "Y")
+    setindex!(out, locs, "locs")
+
+
+    # alert("Finished Matern fitting")
+
 #     println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
 #     # 29 minutes after revising code
 
@@ -69,19 +84,22 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 # # prediction
 # #
 
+
 # out = subset_posterior(out, model="overdispersed")
 
-# locs_pred = Matrix(load("./data/grid_5.0.rds"));
-# locs_pred = locs_pred / rescale;
-# X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
+locs_pred = Matrix(load("./data/grid_5.0.rds"));
+locs_pred = locs_pred / rescale;
+X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 # if (!isfile("output/pollen/pollen_overdispersed_predictions.jld"))
-#     BLAS.set_num_threads(32);
-#     preds = predict_pg_stlm_overdispersed(out, X, X_pred, locs, locs_pred, n_message = 50); 
+    BLAS.set_num_threads(32);
+    preds = predict_pg_stlm_overdispersed(out, X_pred, locs_pred, n_message = 1, n_save = 50); 
     
 #     save("output/pollen/pollen_overdispersed_predictions.jld", "data", preds);
 #     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
 #     R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_predictions.RDS', compress = FALSE)";
+
+alert("Finished Overdispersed predictions")
 # end
 
 

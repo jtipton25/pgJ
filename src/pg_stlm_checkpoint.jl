@@ -9,10 +9,13 @@ export pg_stlm
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_latent_fit.jld", save_full=false)
+function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_matern_fit.jld", save_full=false)
 
     tic = now()
 
+    # check input (TODO)
+    # check params (TODO)    
+    
     N = size(Y, 1)
     J = size(Y, 2)
     n_time = size(Y, 3)
@@ -79,6 +82,9 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "lambda_theta" => Array{Float64}(undef, J - 1),
                 "Sigma_theta_tune" => [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
                 "rho_accept" => 0,
+                "Y" => Y,
+                "X" => X,
+                "locs" => locs,
                 "params" => params,
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
@@ -92,7 +98,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             end
         end
     else
-        # only save the reduce samples
+        # only save the reduces samples
         if isfile(path)
             out = load(path)
 
@@ -128,6 +134,9 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "lambda_theta" => Array{Float64}(undef, J - 1),
                 "Sigma_theta_tune" => [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
                 "rho_accept" => 0,
+                "Y" => Y,
+                "X" => X,
+                "locs" => locs,
                 "params" => params,
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
@@ -142,22 +151,58 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         end
     end
 
+
     #
     # return the MCMC output if the MCMC has fully run
     #
     if save_full
         if !isempty(out["k"])
             if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
-                return (out)
+
+                delete!(out, "eta_init")
+                delete!(out, "beta_init")
+                delete!(out, "Sigma_theta_tune_chol")
+                delete!(out, "Sigma_theta_tune")
+                delete!(out, "rho_init")
+                delete!(out, "rho_tune")
+                delete!(out, "omega_init")
+                delete!(out, "k")
+                delete!(out, "tau_init")
+                delete!(out, "lambda_theta")
+                delete!(out, "checkpoint_idx")
+                delete!(out, "rho_accept")
+                delete!(out, "theta_accept")
+                delete!(out, "theta_init")
+
+                return out
             end
         end
     else
         if out["k"] == (params["n_adapt"] + params["n_mcmc"])
-            return (out)          
+
+            delete!(out, "eta_init")
+            delete!(out, "beta_init")
+            delete!(out, "Sigma_theta_tune_chol")
+            delete!(out, "Sigma_theta_tune")
+            delete!(out, "rho_init")
+            delete!(out, "rho_tune")
+            delete!(out, "omega_init")
+            delete!(out, "k")
+            delete!(out, "tau_init")
+            delete!(out, "lambda_theta")
+            delete!(out, "checkpoint_idx")
+            delete!(out, "rho_accept")
+            delete!(out, "theta_accept")
+            delete!(out, "theta_init")
+
+            return out        
         end
     end
 
-        # setup the checkpoints
+    #
+    # setup the checkpoints
+    #
+
     checkpoint_idx = 1
     if !isempty(out["checkpoint_idx"])
         checkpoint_idx = out["checkpoint_idx"][end] + 1
@@ -170,9 +215,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             k_start = out["k"] + 1
         end
     end
-    
-    # check input (TODO)
-    # check params (TODO)
 
     tX = X'
 
@@ -465,7 +507,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
         if (sample_beta)
             for j in 1:(J-1)
-                tXSigma_inv = X' * Sigma_inv[j]
+                tXSigma_inv = tX * Sigma_inv[j]
                 # A = n_time * tXSigma_inv * X + Sigma_beta_inv
                 A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
                 b = dropdims(
@@ -776,10 +818,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         else 
             if k == (checkpoints[checkpoint_idx+1] - 1)
                 if (k > params["n_adapt"])
-                    print("HELP")
                     # add the save variables
                     save_idx = Int.((k_vec .- params["n_adapt"]) ./ params["n_thin"])
-                    print("save_idx = ", save_idx)
                     out["beta"][save_idx, :, :] = beta_save
                     out["eta"][save_idx, :, :, :] = eta_save
                     out["omega"][save_idx, :, :, :] = omega_save
@@ -816,6 +856,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     #
     # end MCMC loop
     #
+
+    toc = now()
 
     # drop the not-needed values
     if !save_full
