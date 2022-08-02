@@ -27,6 +27,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         push!(checkpoints, params["n_adapt"] + params["n_mcmc"] + 1)
     end
 
+    n_save = Int(params["n_mcmc"] / params["n_thin"]) ## convert to an integer
+
     # load the file if it exists
     beta_init = nothing
     eta_init = nothing
@@ -179,7 +181,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
             if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
 
                 delete!(out, "eta_init")
-                delete!(out, "psi_init")
                 delete!(out, "beta_init")
                 delete!(out, "Sigma_theta_tune_chol")
                 delete!(out, "Sigma_theta_tune")
@@ -205,7 +206,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         if out["k"] == (params["n_adapt"] + params["n_mcmc"])
 
             delete!(out, "eta_init")
-            delete!(out, "psi_init")
             delete!(out, "beta_init")
             delete!(out, "Sigma_theta_tune_chol")
             delete!(out, "Sigma_theta_tune")
@@ -359,7 +359,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun = corr_fun))) for
         v in eachcol(theta)
     ] # broadcasting over D but not theta
-    Sigma = [Matrix(Cholesky(tau[j]^2 * R[j] + sigma[j]^2)) * I for j in 1:(J-1)]
+    Sigma = [Matrix(Hermitian(tau[j]^2 * R[j] + sigma[j]^2 * I)) for j in 1:(J-1)]
     Sigma_chol = [cholesky(v) for v in Sigma]
     Sigma_inv = [inv(v) for v in Sigma_chol]
 
@@ -429,7 +429,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         theta_save = Array{Float64}(undef, (params["n_save"], J - 1, 2))
     end
     eta_save = Array{Float64}(undef, (params["n_save"], N, J - 1, n_time))
-    psi_save = Array{Float64}(undef, (params["n_save"], N, J - 1, n_time))
     pi_save = Array{Float64}(undef, (params["n_save"], N, J, n_time))
     omega_save = Array{Float64}(undef, (params["n_save"], N, J - 1, n_time))
     k_vec = zeros(Int64, params["n_save"])
@@ -443,7 +442,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
             theta_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), J - 1, 2))
         end
         eta_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), N, J - 1, n_time))
-        psi_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), N, J - 1, n_time))
         pi_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), N, J, n_time))
         omega_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), N, J - 1, n_time))
         k_vec = zeros(Int64, Int(params["n_save"] / params["n_thin"]))
@@ -462,12 +460,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
     Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
-    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitan(Sigma_theta_tune[j]))) for j in 1:(J-1)]
+    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
 
     if corr_fun == "matern"
-        theta_accept = zeros((J - 1, 2))
+        theta_accept = zeros(J - 1)
         lambda_theta = 0.5 * ones(J - 1)
-        theta_accept_batch = zeros((J - 1, 2))
+        theta_accept_batch = zeros(J - 1)
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
         Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
@@ -521,9 +519,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         params["n_adapt"],
         " adaptive iterations and ",
         params["n_mcmc"],
-        " fitting iterations",
+        " fitting iterations starting at iteration ",
+        k_start
     )
     flush(stdout)
+
+    
 
     # MCMC loop
     for k = k_start:(params["n_adapt"]+params["n_mcmc"])
@@ -720,7 +721,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 theta_star = rand(
                     MvNormal(
                         theta[:, j],
-                        lambda_theta[j] *
+                        sqrt(lambda_theta[j]) *
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
@@ -942,19 +943,44 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         # Save MCMC parameters
         #
 
-        if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
-            save_idx = k-checkpoints[checkpoint_idx]+1
-            k_vec[save_idx] = k
-            beta_save[save_idx, :, :, :] = beta
-            eta_save[save_idx, :, :, :] = eta
-            theta_save[save_idx, :, :] = theta'
-            tau_save[save_idx, :] = tau
-            sigma_save[save_idx, :] = sigma
-            rho_save[save_idx, :] = rho
-            omega_save[save_idx, :, :] = omega
-            for t = 1:n_time
-                pi_save[save_idx, :, :, t] =
-                    reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+        if save_full
+            if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
+                save_idx = k-checkpoints[checkpoint_idx]+1
+                k_vec[save_idx] = k
+                beta_save[save_idx, :, :, :] = beta
+                eta_save[save_idx, :, :, :] = eta
+                theta_save[save_idx, :, :] = theta'
+                tau_save[save_idx, :] = tau
+                sigma_save[save_idx, :] = sigma
+                rho_save[save_idx, :] = rho
+                omega_save[save_idx, :, :, :] = omega
+                for t = 1:n_time
+                    pi_save[save_idx, :, :, t] =
+                        reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+                end
+            end
+        else 
+            if (k > params["n_adapt"])
+                if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
+                    if mod(k, params["n_thin"]) == 0
+                        save_idx = mod(Int((k - params["n_adapt"]) / params["n_thin"]), Int(params["n_save"] / params["n_thin"]))
+                        if save_idx == 0
+                            save_idx = Int(params["n_save"] / params["n_thin"])
+                        end
+                        k_vec[save_idx] = k
+                        beta_save[save_idx, :, :, :] = beta
+                        eta_save[save_idx, :, :, :] = eta
+                        theta_save[save_idx, :, :] = theta'
+                        tau_save[save_idx, :] = tau
+                        sigma_save[save_idx, :] = sigma
+                        rho_save[save_idx, :] = rho
+                        omega_save[save_idx, :, :, :] = omega
+                        for t = 1:n_time
+                            pi_save[save_idx, :, :, t] =
+                                reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+                        end
+                    end
+                end
             end
         end
 
@@ -1002,7 +1028,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     save_idx = Int.((k_vec .- params["n_adapt"]) ./ params["n_thin"])
                     out["beta"][save_idx, :, :] = beta_save
                     out["eta"][save_idx, :, :, :] = eta_save
-                    out["psi"][save_idx, :, :, :] = psi_save
                     out["omega"][save_idx, :, :, :] = omega_save
                     out["theta"][save_idx, :, :] = theta_save
                     out["tau"][save_idx, :] = tau_save
@@ -1011,7 +1036,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 end
                 out["beta_init"] = beta
                 out["eta_init"] = eta
-                out["psi_init"] = psi
                 out["omega_init"] = omega
                 out["theta_init"] = theta
                 out["tau_init"] = tau
@@ -1020,7 +1044,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 append!(out["checkpoint_idx"], checkpoint_idx)
                 out["rho_accept"] = rho_accept
                 out["rho_tune"] = rho_tune
-                out["tua_accept"] = tau_accept
+                out["tau_accept"] = tau_accept
                 out["tau_tune"] = tau_tune
                 out["sigma_accept"] = sigma_accept
                 out["sigma_tune"] = sigma_tune
@@ -1047,7 +1071,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
     if !save_full
         delete!(out, "eta_init")
-        delete!(out, "psi_init")
         delete!(out, "beta_init")
         delete!(out, "Sigma_theta_tune_chol")
         delete!(out, "Sigma_theta_tune")

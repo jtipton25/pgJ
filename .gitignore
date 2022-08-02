@@ -10,7 +10,10 @@ docs/build/
 *_out.txt
 *_err.txt
 .vscode/
-
+output/*.jld
+output/*.rds
+output/pollen/*.jld
+output/pollen/*.rds
 
 # pg-pollen data files
 data/grid_3.1.RDS

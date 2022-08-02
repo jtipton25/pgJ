@@ -101,7 +101,7 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 #     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
     R"saveRDS($preds, file = 'output/pollen/pollen_matern_predictions.RDS', compress = FALSE)";
 
-    alert("Finished Matern predictions")
+    # alert("Finished Matern predictions")
 # end
 
 
