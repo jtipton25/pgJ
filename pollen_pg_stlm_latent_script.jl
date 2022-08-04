@@ -66,6 +66,8 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 #     out = load("output/pollen/pollen_latent_fit.jld")["data"];
 # end
 
+# alert("Finished Latent fitting")
+
 # #
 # # prediction
 # #
@@ -85,6 +87,6 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
 #     R"saveRDS($preds, file = 'output/pollen/pollen_latent_predictions.RDS', compress = FALSE)";
 # end
 
-
+alert("Finished Latent predictions")
 
 

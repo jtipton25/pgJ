@@ -125,7 +125,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
             theta_init = out["theta_init"]
             tau_init = out["tau_init"]
             rho_init = out["rho_init"]
-            sigma_init = out["sigma"][out["k"][end], :]
+            sigma_init = out["sigma_init"]
 
             # need to recover the current tuning values
             theta_accept_init = out["theta_accept"]
@@ -141,7 +141,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         else
             # initialize the Dict
             out = Dict(
-                "k" => 1,
+                "k" => 0,
                 "checkpoint_idx" => Array{Int64}(undef, 0),
                 "beta" => Array{Float64}(undef, (n_save, p, J - 1)),
                 "eta" => Array{Float64}(undef, (n_save, N, J - 1, n_time)),
@@ -193,6 +193,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 delete!(out, "sigma_tune")
                 delete!(out, "sigma_accept")
                 delete!(out, "k")
+                delete!(out, "sigma_init")
                 delete!(out, "tau_init")
                 delete!(out, "lambda_theta")
                 delete!(out, "checkpoint_idx")
@@ -218,6 +219,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
             delete!(out, "sigma_tune")
             delete!(out, "sigma_accept")
             delete!(out, "k")
+            delete!(out, "sigma_init")
             delete!(out, "tau_init")
             delete!(out, "lambda_theta")
             delete!(out, "checkpoint_idx")
@@ -1020,8 +1022,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 end
             end
         else
-
-
             if k == (checkpoints[checkpoint_idx+1] - 1)
                 if (k > params["n_adapt"])
                     # add the save variables
@@ -1031,6 +1031,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     out["omega"][save_idx, :, :, :] = omega_save
                     out["theta"][save_idx, :, :] = theta_save
                     out["tau"][save_idx, :] = tau_save
+                    out["sigma"][save_idx, :] = sigma_save
                     out["rho"][save_idx, :] = rho_save
                     out["pi"][save_idx, :, :, :] = pi_save
                 end
@@ -1039,6 +1040,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 out["omega_init"] = omega
                 out["theta_init"] = theta
                 out["tau_init"] = tau
+                out["sigma_init"] = sigma
                 out["rho_init"] = rho
                 out["k"] = k
                 append!(out["checkpoint_idx"], checkpoint_idx)
@@ -1084,6 +1086,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         delete!(out, "sigma_accept")
         delete!(out, "k")
         delete!(out, "tau_init")
+        delete!(out, "sigma_init")
         delete!(out, "lambda_theta")
         delete!(out, "checkpoint_idx")
         delete!(out, "theta_accept")

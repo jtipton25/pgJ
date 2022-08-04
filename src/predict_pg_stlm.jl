@@ -37,12 +37,6 @@ function predict_pg_stlm(out, X_pred, locs_pred; path="./output/pollen/pollen_ma
         push!(checkpoints, n_samples + 1)
     end
 
-    println("Predicting new locations from MCMC. Running for ", n_samples, " iterations.")
-    flush(stdout)
-
-    if (n_pred > 20000) & !posterior_mean_only
-       @assert false "Number of prediction points must be less than 20000 if posterior_mean_only=false" 
-    end
 
     D_obs = pairwise(Euclidean(), locs, locs, dims = 1)
     D_pred = zeros((n_pred, n_pred))
@@ -83,6 +77,14 @@ function predict_pg_stlm(out, X_pred, locs_pred; path="./output/pollen/pollen_ma
 
     G_time = Graphs.grid((n_time, 1))
     W_time = Graphs.adjacency_matrix(G_time)
+
+    println("Predicting new locations from MCMC. Running for ", n_samples, " iterations starting at iteration ", k_start)
+    flush(stdout)
+
+    if (n_pred > 20000) & !posterior_mean_only
+       @assert false "Number of prediction points must be less than 20000 if posterior_mean_only=false" 
+       flush(stdout)
+    end
 
     # loop over the posterior samples
     for k in k_start:n_samples

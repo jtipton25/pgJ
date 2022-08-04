@@ -93,13 +93,14 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 # if (!isfile("output/pollen/pollen_overdispersed_predictions.jld"))
     BLAS.set_num_threads(32);
+    include("src/predict_pg_stlm_overdispersed.jl")
     preds = predict_pg_stlm_overdispersed(out, X_pred, locs_pred, n_message = 1, n_save = 50); 
     
 #     save("output/pollen/pollen_overdispersed_predictions.jld", "data", preds);
 #     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
 #     R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_predictions.RDS', compress = FALSE)";
 
-alert("Finished Overdispersed predictions")
+# alert("Finished Overdispersed predictions")
 # end
 
 

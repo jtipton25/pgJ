@@ -130,7 +130,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         else
             # initialize the Dict
             out = Dict(
-                "k" => 1,
+                "k" => 0,
                 "checkpoint_idx" => Array{Int64}(undef, 0),
                 "beta" => Array{Float64}(undef, (n_save, p, J - 1)),
                 "eta" => Array{Float64}(undef, (n_save, N, J - 1, n_time)),
@@ -138,6 +138,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 "omega" => Array{Float64}(undef, (n_save, N, J - 1, n_time)),
                 "theta" => Array{Float64}(undef, (n_save, J - 1)),
                 "tau" => Array{Float64}(undef, (n_save, J - 1)),
+                "sigma" => Array{Float64}(undef, (n_save, J - 1)),
                 "pi" => Array{Float64}(undef, (n_save, N, J, n_time)),
                 "rho" => Array{Float64}(undef, (n_save, J - 1)),
                 "corr_fun" => corr_fun,
@@ -842,22 +843,49 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         # Save MCMC parameters
         #
 
-        if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
-            save_idx = k-checkpoints[checkpoint_idx]+1
-            k_vec[save_idx] = k
-            beta_save[save_idx, :, :, :] = beta
-            eta_save[save_idx, :, :, :] = eta
-            psi_save[save_idx, :, :, :] = psi
-            theta_save[save_idx, :, :] = theta'
-            tau_save[save_idx, :] = tau
-            sigma_save[save_idx, :] = sigma
-            rho_save[save_idx, :] = rho
-            omega_save[save_idx, :, :] = omega
-            for t = 1:n_time
-                pi_save[save_idx, :, :, t] =
-                    reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+        if save_full
+            if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
+                save_idx = k-checkpoints[checkpoint_idx]+1
+                k_vec[save_idx] = k
+                beta_save[save_idx, :, :, :] = beta
+                eta_save[save_idx, :, :, :] = eta
+                psi_save[save_idx, :, :, :] = psi
+                theta_save[save_idx, :, :] = theta'
+                tau_save[save_idx, :] = tau
+                sigma_save[save_idx, :] = sigma
+                rho_save[save_idx, :] = rho
+                omega_save[save_idx, :, :, :] = omega
+                for t = 1:n_time
+                    pi_save[save_idx, :, :, t] =
+                        reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+                end
+            end
+        else
+            if (k > params["n_adapt"])
+                if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
+                    if mod(k, params["n_thin"]) == 0
+                        save_idx = mod(Int((k - params["n_adapt"]) / params["n_thin"]), Int(params["n_save"] / params["n_thin"]))
+                        if save_idx == 0
+                            save_idx = Int(params["n_save"] / params["n_thin"])
+                        end
+                        k_vec[save_idx] = k
+                        beta_save[save_idx, :, :, :] = beta
+                        eta_save[save_idx, :, :, :] = eta
+                        psi_save[save_idx, :, :, :] = psi
+                        theta_save[save_idx, :, :] = theta'
+                        tau_save[save_idx, :] = tau
+                        sigma_save[save_idx, :] = sigma
+                        rho_save[save_idx, :] = rho
+                        omega_save[save_idx, :, :, :] = omega
+                        for t = 1:n_time
+                            pi_save[save_idx, :, :, t] =
+                                reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
+                        end
+                    end
+                end
             end
         end
+
 
         #
         # save as file
@@ -902,6 +930,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                     out["omega"][save_idx, :, :, :] = omega_save
                     out["theta"][save_idx, :, :] = theta_save
                     out["tau"][save_idx, :] = tau_save
+                    out["sigma"][save_idx, :] = sigma_save
                     out["rho"][save_idx, :] = rho_save
                     out["pi"][save_idx, :, :, :] = pi_save
                 end
@@ -911,6 +940,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 out["omega_init"] = omega
                 out["theta_init"] = theta
                 out["tau_init"] = tau
+                out["sigma_init"] = sigma
                 out["rho_init"] = rho
                 out["k"] = k
                 append!(out["checkpoint_idx"], checkpoint_idx)
