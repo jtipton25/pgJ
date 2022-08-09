@@ -19,11 +19,11 @@ include("src/calc_Mi.jl")
 include("src/calc_kappa.jl")
 include("src/polyagamma.jl")
 include("src/update_tuning.jl")
-# include("src/pg_stlm_overdispersed.jl")
-include("src/pg_stlm_overdispersed_checkpoint.jl")
+include("src/pg_stlm_overdispersed.jl")
 include("src/predict_pg_stlm_overdispersed.jl")
 
 Threads.nthreads()
+BLAS.set_num_threads(32);
 
 # load the pollen data
 
@@ -50,58 +50,37 @@ priors = Dict{String, Any}("mu_beta" => zeros(p), "Sigma_beta" => Diagonal(100.0
         "alpha_sigma" => 1, "beta_sigma" => 1,
  	    "alpha_rho" => 0.1, "beta_rho" => 0.1);
 
-# if (!isfile("output/pollen/pollen_overdispersed_fit.jld"))
-    BLAS.set_num_threads(32);
-    out = pg_stlm_overdispersed(Y, X, locs, params, priors, corr_fun="matern", path = "./output/pollen/pollen_overdispersed_fit.jld"); 
+out = pg_stlm_overdispersed(Y, X, locs, params, priors, corr_fun="matern", path = "./output/pollen/pollen_overdispersed_fit.jld"); 
+if (out["runtime"] / (60*1000) < 120)
+    println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
+    flush(stdout)
+else
+    println("Model fitting took ",  out["runtime"]/(60*60*1000), " hours")
+    flush(stdout)
+end
 
-    if (out["runtime"] / (60*1000) < 120)
-        println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
-    else
-        println("Model fitting took ",  out["runtime"]/(60*60*1000), " hours")
-    end
+# alert("Finished Overdispsersed fitting")
 
+if (!isfile("output/pollen/pollen_overdispersed_fit.rds"))
+    R"saveRDS($out, file = 'output/pollen/pollen_overdispersed_fit.rds', compress = FALSE)";
+end
 
-    setindex!(out, X, "X")
-    setindex!(out, Y, "Y")
-    setindex!(out, locs, "locs")
-
-
-    # alert("Finished Matern fitting")
-
-#     println("Model fitting took ",  out["runtime"]/(60*1000), " minutes")
-#     # 29 minutes after revising code
-
-#     save("output/pollen/pollen_overdispersed_fit.jld", "data", out);
-#     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-#     R"saveRDS($out, file = 'output/pollen/pollen_overdispersed_fit.RDS', compress = FALSE)";
-# else 
-#     println("Loading saved model output from pollen_pg_stlm_overdispersed")
-#     flush(stdout)
-#     out = load("output/pollen/pollen_overdispersed_fit.jld")["data"];
-# end
-
-# #
-# # prediction
-# #
-
-
-# out = subset_posterior(out, model="overdispersed")
+#
+# prediction
+#
 
 locs_pred = Matrix(load("./data/grid_5.0.rds"));
 locs_pred = locs_pred / rescale;
 X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
-# if (!isfile("output/pollen/pollen_overdispersed_predictions.jld"))
-    BLAS.set_num_threads(32);
-    include("src/predict_pg_stlm_overdispersed.jl")
-    preds = predict_pg_stlm_overdispersed(out, X_pred, locs_pred, n_message = 1, n_save = 50); 
+preds = predict_pg_stlm_overdispersed(out, X_pred, locs_pred, n_message = 1, n_save = 50); 
     
-#     save("output/pollen/pollen_overdispersed_predictions.jld", "data", preds);
-#     #delete!(out, "runtime"); # remove the runtime which has a corrupted type
-#     R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_predictions.RDS', compress = FALSE)";
+if (!isfile("output/pollen/pollen_overdispersed_predictions.rds"))
+    R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_predictions.rds', compress = FALSE)";
+end
 
 # alert("Finished Overdispersed predictions")
-# end
+
 
 
 
