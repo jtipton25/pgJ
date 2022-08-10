@@ -155,6 +155,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     #
     # return the MCMC output if the MCMC has fully run
     #
+    
     if save_full
         if !isempty(out["k"])
             if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
@@ -535,10 +536,15 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        # b =
+                        #     Sigma_inv[j] *
+                        #     ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                        #     kappa[:, j, 1]
                         b =
                             Sigma_inv[j] *
-                            ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                            ((1.0 / (1.0 + rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                             kappa[:, j, 1]
                         eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                     end

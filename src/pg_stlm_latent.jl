@@ -808,7 +808,8 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
+                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
+                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
                         b =
                             Sigma_inv[j] * (rho[j] * psi[:, j, 2]) +
                             1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])

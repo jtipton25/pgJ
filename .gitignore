@@ -14,6 +14,10 @@ output/*.jld
 output/*.rds
 output/pollen/*.jld
 output/pollen/*.rds
+output/cross-validate/*.jld
+output/cross-validate/*.rds
+output/cross-validate/*.RData
+
 
 # pg-pollen data files
 data/grid_3.1.RDS

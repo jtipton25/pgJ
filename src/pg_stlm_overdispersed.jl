@@ -602,10 +602,16 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                        # b =
+                        #     Sigma_inv[j] * (
+                        #         (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] +
+                        #         rho[j] * eta[:, j, 2]
+                        #     ) + kappa[:, j, 1]
                         b =
                             Sigma_inv[j] * (
-                                (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] +
+                                (1.0 / (1.0 + rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] +
                                 rho[j] * eta[:, j, 2]
                             ) + kappa[:, j, 1]
                         eta[:, j, 1] =
