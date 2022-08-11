@@ -581,7 +581,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         if (sample_tau)
             Threads.@threads for j in 1:(J-1)
                 devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
+                # devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
+                devs[:, 1] = (eta[:, j, 1] - Xbeta[:, j]) / sqrt(1 + rho[j]^2)
                 for t = 2:n_time
                     devs[:, t] =
                         eta[:, j, t] - rho[j] * eta[:, j, t-1] - (1.0 - rho[j]) * Xbeta[:, j]
@@ -626,7 +627,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 Sigma_chol_star.U .*= tau[j]
                 mh1 =
                     logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
                         eta[:, j, 1],
                     ) +
                     sum([
@@ -707,6 +708,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
+                        logpdf(
+                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -718,6 +723,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
+                        logpdf(
+                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(

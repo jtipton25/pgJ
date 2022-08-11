@@ -745,7 +745,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
                 mh1 =
                     logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
                         eta[:, j, 1],
                     ) +
                     sum([
@@ -761,7 +761,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
                 mh2 =
                     logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
                         eta[:, j, 1],
                     ) +
                     sum([
@@ -824,6 +824,10 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
+                        logpdf(
+                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -836,6 +840,10 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
+                        logpdf(
+                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -885,7 +893,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
                 mh1 =
                     logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
                         eta[:, j, 1],
                     ) +
                     sum([
@@ -905,7 +913,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
                 mh2 =
                     logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
                         eta[:, j, 1],
                     ) +
                     sum([

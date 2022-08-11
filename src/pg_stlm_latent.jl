@@ -653,7 +653,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
 
                 mh1 =
                     logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
                         psi[:, j, 1],
                     ) +
                     sum([
@@ -669,7 +669,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
 
                 mh2 =
                     logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
                         psi[:, j, 1],
                     ) +
                     sum([
@@ -733,6 +733,10 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
+                        logpdf(
+                            MvNormal(zeros(N), 1.0 / (1.0 + rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -744,6 +748,10 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
+                        logpdf( 
+                            MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
