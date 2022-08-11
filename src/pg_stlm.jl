@@ -421,7 +421,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     if !isnothing(theta_accept_init)
         theta_accept = copy(theta_accept_init)
     end
-    lambda_theta = 0.5 * ones(J - 1)
+    lambda_theta = 0.1 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
     Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
@@ -430,7 +430,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
     if corr_fun == "matern"
         theta_accept = zeros(J - 1)
-        lambda_theta = 0.5 * ones(J - 1)
+        lambda_theta = 0.1 * ones(J - 1)
         theta_accept_batch = zeros(J - 1, 2)
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
@@ -619,8 +619,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 R_chol_star = try
                     cholesky(R_star)
                 catch
-                    println("theta_star = ", theta_star)
-                    @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                    @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
                     cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
                 end
                 Sigma_chol_star = copy(R_chol_star)

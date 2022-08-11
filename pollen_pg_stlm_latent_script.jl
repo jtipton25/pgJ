@@ -38,7 +38,7 @@ X = reshape(ones(size(Y)[1]), size(Y)[1], 1);
 p = size(X)[2]
 # load the location data
 locs = load("./data/pollen_locs_5.0.h5")["locs"];
-rescale = 1e4
+rescale = 1e3
 locs = locs / rescale
 
 # params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 50);
