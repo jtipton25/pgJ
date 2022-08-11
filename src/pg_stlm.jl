@@ -9,7 +9,7 @@ export pg_stlm
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_matern_fit.jld", save_full=false)
+function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_matern_fit.jld", save_full=false, correct_initial_variance=true)
 
     tic = now()
 
@@ -510,17 +510,35 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         if (sample_beta)
             for j in 1:(J-1)
                 tXSigma_inv = tX * Sigma_inv[j]
-                # A = n_time * tXSigma_inv * X + Sigma_beta_inv
-                A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
-                b = dropdims(
-                    # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
-                    # sum(rho[j] * tXSigma_inv * eta[:, j, 2:n_time], dims = 2) + Sigma_beta_inv_mu_beta, 
-                    tXSigma_inv * eta[:, j, 1] +
-                    sum((1 - rho[j]) * tXSigma_inv * (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), dims=2) +
-                    Sigma_beta_inv_mu_beta,
-                    dims=2,
-                )
-                beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                if correct_initial_variance
+                    A = ((1.0 - rho[j]^2) + (n_time - 1.0) * (1.0 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
+                    b = dropdims(
+                        (1.0 - rho[j]^2) * tXSigma_inv * eta[:, j, 1] +
+                        sum(
+                            (1.0 - rho[j]) * 
+                            tXSigma_inv *
+                            (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]), 
+                            dims=2
+                        ) +
+                        Sigma_beta_inv_mu_beta,
+                        dims=2,
+                    )
+                    beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                else
+                    A = (1.0 + (n_time - 1.0) * (1.0 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
+                    b = dropdims(
+                        tXSigma_inv * eta[:, j, 1] +
+                        sum(
+                            (1.0 - rho[j]) * 
+                            tXSigma_inv * 
+                            (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]),
+                             dims=2
+                        ) +
+                        Sigma_beta_inv_mu_beta,
+                        dims=2,
+                    )
+                    beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                end
             end
         end
 
@@ -536,17 +554,22 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                        # b =
-                        #     Sigma_inv[j] *
-                        #     ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                        #     kappa[:, j, 1]
-                        b =
-                            Sigma_inv[j] *
-                            ((1.0 / (1.0 + rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
-                            kappa[:, j, 1]
-                        eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        if correct_initial_variance
+                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            b =
+                                Sigma_inv[j] *
+                                (((1.0 - rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                                kappa[:, j, 1]
+                            eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        else 
+                            A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            b =
+                                Sigma_inv[j] *
+                                ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
+                                kappa[:, j, 1]
+                            eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        end
+
                     end
                 elseif t == n_time
                     # final time
@@ -581,8 +604,12 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         if (sample_tau)
             Threads.@threads for j in 1:(J-1)
                 devs = Array{Float64}(undef, (N, n_time))
-                # devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
-                devs[:, 1] = (eta[:, j, 1] - Xbeta[:, j]) / sqrt(1 + rho[j]^2)
+                if correct_initial_variance
+                    devs[:, 1] = (eta[:, j, 1] - Xbeta[:, j]) * sqrt(1.0 - rho[j]^2)
+                else        
+                    devs[:, 1] = eta[:, j, 1] - Xbeta[:, j]
+                end
+                
                 for t = 2:n_time
                     devs[:, t] =
                         eta[:, j, t] - rho[j] * eta[:, j, t-1] - (1.0 - rho[j]) * Xbeta[:, j]
@@ -620,15 +647,11 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     cholesky(R_star)
                 catch
                     @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
-                    cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
+                    cholesky(Hermitian(R_star + 1e-6 * I))
                 end
                 Sigma_chol_star = copy(R_chol_star)
                 Sigma_chol_star.U .*= tau[j]
                 mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -640,12 +663,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     ]) +
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
 
-
                 mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -656,6 +674,26 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         ) for t = 2:n_time
                     ]) +
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
+
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                end    
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
@@ -707,10 +745,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
-                        logpdf(
-                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -722,10 +756,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
-                        logpdf(
-                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -735,6 +765,17 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                                 eta[:, j, t],
                             ) for t = 2:n_time
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
+
+                    if correct_initial_variance
+                        mh1 += logpdf(
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        ) 
+                        mh2 += logpdf(
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        )
+                    end # no rho in the first eta when initial variance isn't corrected
 
                     mh = exp(mh1 - mh2)
                     if mh > rand(Uniform(0, 1))

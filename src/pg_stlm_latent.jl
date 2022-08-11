@@ -10,7 +10,7 @@ export pg_stlm_latent
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_latent_fit.jld", save_full=false)
+function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_latent_fit.jld", save_full=false, correct_initial_variance=true)
 
     tic = now()
 
@@ -598,7 +598,11 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         if (sample_tau)
             Threads.@threads for j in 1:(J-1)
                 devs = Array{Float64}(undef, (N, n_time))
-                devs[:, 1] = psi[:, j, 1]
+                if correct_initial_variance
+                    devs[:, 1] = psi[:, j, 1] * sqrt(1.0 - rho[j]^2)
+                else        
+                    devs[:, 1] = psi[:, j, 1]
+                end
                 for t = 2:n_time
                     devs[:, t] = psi[:, j, t] - rho[j] * psi[:, j, t-1]
                 end
@@ -653,10 +657,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 Sigma_chol_star.U .*= tau[j]
 
                 mh1 =
-                    logpdf(
-                        MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        psi[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -669,10 +669,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
 
                 mh2 =
-                    logpdf(
-                        MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                        psi[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -683,6 +679,27 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         ) for t = 2:n_time
                     ]) +
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
+
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        psi[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        psi[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(zeros(N), PDMat(Sigma_star, Sigma_chol_star)),
+                        psi[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])),
+                        psi[:, j, 1],
+                    )
+                end   
+
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
@@ -734,10 +751,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
-                        logpdf(
-                            MvNormal(zeros(N), 1.0 / (1.0 + rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            psi[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -749,10 +762,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
-                        logpdf( 
-                            MvNormal(zeros(N), 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            psi[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -762,6 +771,18 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                                 psi[:, j, t],
                             ) for t = 2:n_time
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
+
+
+                    if correct_initial_variance
+                        mh1 += logpdf(
+                            MvNormal(zeros(N), 1.0 / (1.0 - rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        )
+                        mh2 += logpdf(
+                            MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        )
+                    end # no rho in the first eta when initial variance isn't corrected
 
                     mh = exp(mh1 - mh2)
                     if mh > rand(Uniform(0, 1))
@@ -817,13 +838,21 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
-                        b =
-                            Sigma_inv[j] * (rho[j] * psi[:, j, 2]) +
-                            1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
-                        psi[:, j, 1] =
-                            rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        if correct_initial_variance
+                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
+                            b =
+                                Sigma_inv[j] * (rho[j] * psi[:, j, 2]) +
+                                1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
+                            psi[:, j, 1] =
+                                rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        else 
+                            A = (1.0 + rho[j]^2) * Sigma_inv[j] + 1.0 / sigma[j]^2 * I
+                            b =
+                                Sigma_inv[j] * (rho[j] * psi[:, j, 2]) +
+                                1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
+                            psi[:, j, 1] =
+                                rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        end
                     end
                 elseif t == n_time
                     # final time

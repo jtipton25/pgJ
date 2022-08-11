@@ -10,7 +10,7 @@ export pg_stlm_overdispersed
 
 Return the MCMC output for a linear model with A 2-D Array of observations of Ints `Y` (with `missing` values), a 2-D Array of covariates `X`, A 2-D Array of locations `locs`, a `Dict` of model parameters `params`, and a `Dict` of prior parameter values `priors` with a correlation function `corr_fun` that can be either `"exponential"` or `"matern"`
 """
-function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponential", path = "./output/pollen/pollen_overdispersed_fit.jld", save_full=false)
+function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential", path="./output/pollen/pollen_overdispersed_fit.jld", save_full=false, correct_initial_variance=true)
 
     tic = now()
 
@@ -22,7 +22,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     n_time = size(Y, 3)
     p = size(X, 2)
 
-    checkpoints = collect(1:params["n_save"]:(params["n_adapt"] + params["n_mcmc"]))
+    checkpoints = collect(1:params["n_save"]:(params["n_adapt"]+params["n_mcmc"]))
     if checkpoints[end] != params["n_adapt"] + params["n_mcmc"]
         push!(checkpoints, params["n_adapt"] + params["n_mcmc"] + 1)
     end
@@ -47,11 +47,11 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     lambda_theta_init = nothing
     Sigma_theta_tune_init = nothing
     Sigma_theta_tune_chol_init = nothing
-    
+
 
     if save_full
         if isfile(path)
-            out = load(path);
+            out = load(path)
 
             # load the last MCMC output values
             beta_init = out["beta"][out["k"][end], :, :]
@@ -92,7 +92,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 "rho" => Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1)),
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
-                "lambda_theta" => Array{Float64}(undef, J-1),
+                "lambda_theta" => Array{Float64}(undef, J - 1),
                 "Sigma_theta_tune" => [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
                 "rho_accept" => 0,
                 "sigma_accept" => 0,
@@ -103,12 +103,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 "params" => params,
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
-            )    
+            )
             out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
 
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
-                out["lambda_theta"] = Array{Float64}(undef, J-1, 2)
+                out["lambda_theta"] = Array{Float64}(undef, J - 1, 2)
                 out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
                 out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             end
@@ -200,7 +200,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 delete!(out, "theta_accept")
                 delete!(out, "theta_init")
 
-                return(out)
+                return (out)
             end
         end
     else
@@ -226,14 +226,14 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
             delete!(out, "theta_accept")
             delete!(out, "theta_init")
 
-            return out        
+            return out
         end
     end
 
     #
     # setup the checkpoints
     #
-    
+
     checkpoint_idx = 1
     if !isempty(out["checkpoint_idx"])
         checkpoint_idx = out["checkpoint_idx"][end] + 1
@@ -354,11 +354,11 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
 
     # setup the GP covariance
-    D = pairwise(Euclidean(), locs, locs, dims = 1)
+    D = pairwise(Euclidean(), locs, locs, dims=1)
 
     # R = [exp.(-D / exp(v)) for v in theta]
     R = [
-        Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun = corr_fun))) for
+        Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for
         v in eachcol(theta)
     ] # broadcasting over D but not theta
     Sigma = [Matrix(Hermitian(tau[j]^2 * R[j] + sigma[j]^2 * I)) for j in 1:(J-1)]
@@ -421,7 +421,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     #
     # setup save variables
     #
-    
+
     beta_save = Array{Float64}(undef, (params["n_save"], p, J - 1))
     tau_save = Array{Float64}(undef, (params["n_save"], J - 1))
     sigma_save = Array{Float64}(undef, (params["n_save"], J - 1))
@@ -434,7 +434,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     pi_save = Array{Float64}(undef, (params["n_save"], N, J, n_time))
     omega_save = Array{Float64}(undef, (params["n_save"], N, J - 1, n_time))
     k_vec = zeros(Int64, params["n_save"])
-    if !save_full        
+    if !save_full
         beta_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), p, J - 1))
         tau_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), J - 1))
         sigma_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), J - 1))
@@ -526,7 +526,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
     )
     flush(stdout)
 
-    
+
 
     # MCMC loop
     for k = k_start:(params["n_adapt"]+params["n_mcmc"])
@@ -572,21 +572,36 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         if (sample_beta)
             for j in 1:(J-1)
                 tXSigma_inv = tX * Sigma_inv[j]
-                # A = n_time * tXSigma_inv * X + Sigma_beta_inv
-                A = (1 + (n_time - 1) * (1 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
-                b = dropdims(
-                    # sum(rho[j] * tXSigma_inv * eta[:, j, :], dims = 2) + Sigma_beta_inv_mu_beta,
-                    tXSigma_inv * eta[:, j, 1] +
-                    sum(
-                        (1 - rho[j]) *
-                        tXSigma_inv *
-                        (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]),
-                        dims = 2,
-                    ) +
-                    Sigma_beta_inv_mu_beta,
-                    dims = 2,
-                )
-                beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                if correct_initial_variance
+                    A = ((1.0 - rho[j]^2) + (n_time - 1.0) * (1.0 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
+                    b = dropdims(
+                        (1.0 - rho[j]^2) * tXSigma_inv * eta[:, j, 1] +
+                        sum(
+                            (1 - rho[j]) *
+                            tXSigma_inv *
+                            (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]),
+                            dims=2,
+                        ) +
+                        Sigma_beta_inv_mu_beta,
+                        dims=2,
+                    )
+                    beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                else
+                    A = (1.0 + (n_time - 1.0) * (1.0 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
+                    b = dropdims(
+                        tXSigma_inv * eta[:, j, 1] +
+                        sum(
+                            (1 - rho[j]) *
+                            tXSigma_inv *
+                            (eta[:, j, 2:n_time] - rho[j] * eta[:, j, 1:(n_time-1)]),
+                            dims=2,
+                        ) +
+                        Sigma_beta_inv_mu_beta,
+                        dims=2,
+                    )
+                    beta[:, j] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                end
+
             end
         end
 
@@ -602,20 +617,25 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 if t == 1
                     # initial time
                     for j in 1:(J-1)
-                        # A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                        A = (1.0 / (1.0 + rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
-                        # b =
-                        #     Sigma_inv[j] * (
-                        #         (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] +
-                        #         rho[j] * eta[:, j, 2]
-                        #     ) + kappa[:, j, 1]
-                        b =
-                            Sigma_inv[j] * (
-                                (1.0 / (1.0 + rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] +
-                                rho[j] * eta[:, j, 2]
-                            ) + kappa[:, j, 1]
-                        eta[:, j, 1] =
-                            rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        if correct_initial_variance
+                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            b =
+                                Sigma_inv[j] * (
+                                    ((1.0 - rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] +
+                                    rho[j] * eta[:, j, 2]
+                                ) + kappa[:, j, 1]
+                            eta[:, j, 1] =
+                                rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        else
+                            A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            b =
+                                Sigma_inv[j] * (
+                                    (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] +
+                                    rho[j] * eta[:, j, 2]
+                                ) + kappa[:, j, 1]
+                            eta[:, j, 1] =
+                                rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        end
                     end
                 elseif t == n_time
                     # final time
@@ -660,10 +680,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 end
 
                 mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -680,10 +696,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     log(tau_star)
 
                 mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -695,6 +707,26 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     ]) +
                     logpdf(InverseGamma(priors["alpha_tau"], priors["beta_tau"]), tau[j]) +
                     log(tau[j])
+
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                end
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
@@ -733,7 +765,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
-                R_star = correlation_function.(D, (exp.(theta_star),), corr_fun = corr_fun) # broadcasting over D but not theta_star
+                R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
                 Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
@@ -745,10 +777,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 end
 
                 mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -761,10 +789,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
 
                 mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -775,6 +799,26 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         ) for t = 2:n_time
                     ]) +
                     logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
+
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                end
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
@@ -825,10 +869,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 rho_star = rand(Normal(rho[j], rho_tune[j]))
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
-                        logpdf(
-                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -841,10 +881,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho_star)
 
                     mh2 =
-                        logpdf(
-                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        ) +
                         sum([
                             logpdf(
                                 MvNormal(
@@ -854,6 +890,17 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                                 eta[:, j, t],
                             ) for t = 2:n_time
                         ]) + logpdf(Beta(priors["alpha_rho"], priors["beta_rho"]), rho[j])
+
+                    if correct_initial_variance
+                        mh1 += logpdf(
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        )
+                        mh2 += logpdf(
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            eta[:, j, 1],
+                        )
+                    end # no rho in the first eta when initial variance isn't corrected
 
                     mh = exp(mh1 - mh2)
                     if mh > rand(Uniform(0, 1))
@@ -893,10 +940,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 end
 
                 mh1 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -913,10 +956,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                     log(sigma_star)
 
                 mh2 =
-                    logpdf(
-                        MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                        eta[:, j, 1],
-                    ) +
                     sum([
                         logpdf(
                             MvNormal(
@@ -931,6 +970,26 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         sigma[j],
                     ) +
                     log(sigma[j])
+
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        eta[:, j, 1],
+                    )
+                end
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
@@ -962,7 +1021,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
 
         if save_full
             if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
-                save_idx = k-checkpoints[checkpoint_idx]+1
+                save_idx = k - checkpoints[checkpoint_idx] + 1
                 k_vec[save_idx] = k
                 beta_save[save_idx, :, :, :] = beta
                 eta_save[save_idx, :, :, :] = eta
@@ -976,7 +1035,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                         reduce(hcat, map(eta_to_pi, eachrow(eta[:, :, t])))'
                 end
             end
-        else 
+        else
             if (k > params["n_adapt"])
                 if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
                     if mod(k, params["n_thin"]) == 0
@@ -1005,7 +1064,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
         # save as file
         #
         if save_full
-            if k == (checkpoints[checkpoint_idx + 1] - 1)
+            if k == (checkpoints[checkpoint_idx+1] - 1)
                 append!(out["k"], k_vec)
                 append!(out["checkpoint_idx"], checkpoint_idx)
                 out["beta"][k_vec, :, :] = beta_save
@@ -1027,7 +1086,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun = "exponenti
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
                 out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
-                
+
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
                 tic = now()
