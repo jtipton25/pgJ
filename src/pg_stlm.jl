@@ -709,7 +709,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 if ((rho_star < 1) & (rho_star > -1))
                     mh1 =
                         logpdf(
-                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            MvNormal(Xbeta[:, j], 1.0  / (1.0 + rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
                             eta[:, j, 1],
                         ) +
                         sum([
