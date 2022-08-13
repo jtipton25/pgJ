@@ -638,81 +638,86 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
-                # R_star = exp.(-D / exp(theta_star))
-                R_star = Matrix(
-                    Hermitian(
-                        correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
-                    ),
-                ) # broadcasting over D but not theta_star
-                Sigma_star = tau[j]^2 * R_star
-                R_chol_star = try
-                    cholesky(R_star)
-                catch
-                    println("theta_star = ", theta_star)
-                    flush(stdout)
-                    @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
-                end
-                Sigma_chol_star = copy(R_chol_star)
-                Sigma_chol_star.U .*= tau[j]
-
-                mh1 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
-
-                mh2 =
-                    sum([
-                        logpdf(
-                            MvNormal(
-                                rho[j] * psi[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
-                            ),
-                            psi[:, j, t],
-                        ) for t = 2:n_time
-                    ]) +
-                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
-
-                if correct_initial_variance
-                    mh1 += logpdf(
-                        MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                        psi[:, j, 1],
-                    )
-                    mh2 += logpdf(
-                        MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                        psi[:, j, 1],
-                    )
+                if (corr_fun == "matern") & (theta_star[1] > 4.1)
+                    # eliminate Matern correlation function failure
+                    @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                 else
-                    mh1 += logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma_star, Sigma_chol_star)),
-                        psi[:, j, 1],
-                    )
-                    mh2 += logpdf(
-                        MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])),
-                        psi[:, j, 1],
-                    )
-                end   
+                    # R_star = exp.(-D / exp(theta_star))
+                    R_star = Matrix(
+                        Hermitian(
+                            correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
+                        ),
+                    ) # broadcasting over D but not theta_star
+                    Sigma_star = tau[j]^2 * R_star
+                    R_chol_star = try
+                        cholesky(R_star)
+                    catch
+                        println("theta_star = ", theta_star)
+                        flush(stdout)
+                        @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                        cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
+                    end
+                    Sigma_chol_star = copy(R_chol_star)
+                    Sigma_chol_star.U .*= tau[j]
 
+                    mh1 =
+                        sum([
+                            logpdf(
+                                MvNormal(
+                                    rho[j] * psi[:, j, t-1],
+                                    PDMat(Sigma_star, Sigma_chol_star),
+                                ),
+                                psi[:, j, t],
+                            ) for t = 2:n_time
+                        ]) +
+                        logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
 
-                mh = exp(mh1 - mh2)
-                if mh > rand(Uniform(0, 1))
-                    theta[:, j] = theta_star
-                    R[j] = R_star
-                    R_chol[j] = R_chol_star
-                    Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
-                    if k <= params["n_adapt"]
-                        theta_accept_batch[j] += 1.0 / 50.0
+                    mh2 =
+                        sum([
+                            logpdf(
+                                MvNormal(
+                                    rho[j] * psi[:, j, t-1],
+                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                ),
+                                psi[:, j, t],
+                            ) for t = 2:n_time
+                        ]) +
+                        logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
+
+                    if correct_initial_variance
+                        mh1 += logpdf(
+                            MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                            psi[:, j, 1],
+                        )
+                        mh2 += logpdf(
+                            MvNormal(zeros(N), 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        )
                     else
-                        theta_accept[j] += 1.0 / params["n_mcmc"]
+                        mh1 += logpdf(
+                            MvNormal(zeros(N), PDMat(Sigma_star, Sigma_chol_star)),
+                            psi[:, j, 1],
+                        )
+                        mh2 += logpdf(
+                            MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])),
+                            psi[:, j, 1],
+                        )
+                    end   
+
+
+                    mh = exp(mh1 - mh2)
+                    if mh > rand(Uniform(0, 1))
+                        theta[:, j] = theta_star
+                        R[j] = R_star
+                        R_chol[j] = R_chol_star
+                        Sigma[j] = Sigma_star
+                        Sigma_chol[j] = Sigma_chol_star
+                        Sigma_inv[j] = inv(Sigma_chol_star)
+                        if k <= params["n_adapt"]
+                            theta_accept_batch[j] += 1.0 / 50.0
+                        else
+                            theta_accept[j] += 1.0 / params["n_mcmc"]
+                        end
                     end
                 end
             end
