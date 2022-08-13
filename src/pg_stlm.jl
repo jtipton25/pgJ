@@ -427,11 +427,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
     Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
 
-
     if corr_fun == "matern"
         theta_accept = zeros(J - 1)
         lambda_theta = 0.1 * ones(J - 1)
-        theta_accept_batch = zeros(J - 1, 2)
+        theta_accept_batch = zeros(J - 1)
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
         Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
         Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
