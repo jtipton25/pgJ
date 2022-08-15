@@ -768,6 +768,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 if (corr_fun == "matern") & (theta_star[1] > 4.1)
                     # eliminate Matern correlation function failure
                     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                    flush(stdout)
                 else
                     R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
                     Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))

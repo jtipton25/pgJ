@@ -641,6 +641,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 if (corr_fun == "matern") & (theta_star[1] > 4.1)
                     # eliminate Matern correlation function failure
                     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                    flush(stdout)
                 else
                     # R_star = exp.(-D / exp(theta_star))
                     R_star = Matrix(
