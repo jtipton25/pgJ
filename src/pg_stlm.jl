@@ -640,7 +640,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         if (sample_theta)
             Threads.@threads for j in 1:(J-1)
                 theta_star = rand(MvNormal(theta[:, j], sqrt(lambda_theta[j]) * PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])))
-                if (corr_fun == "matern") & (theta_star[1] > 4.1)
+                if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
                     # eliminate Matern correlation function failure
                     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                     flush(stdout)

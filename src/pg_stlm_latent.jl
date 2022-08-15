@@ -638,7 +638,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
-                if (corr_fun == "matern") & (theta_star[1] > 4.1)
+                if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
                     # eliminate Matern correlation function failure
                     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                     flush(stdout)

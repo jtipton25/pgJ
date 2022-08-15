@@ -25,7 +25,7 @@ BLAS.set_num_threads(32);
 # load the pollen data
 
 # dat = RData.load("./data/pollen_dat_5.0.RDS", convert=true)
-Y = load("./data/pollen_data_5.0.h5")["pollen"];
+# Y = load("./data/pollen_data_5.0.h5")["pollen"];
 K = 8
 for k in 1:K
     println("Fitting Matern model for fold $k of $K")
