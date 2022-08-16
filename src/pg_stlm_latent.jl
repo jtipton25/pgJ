@@ -100,7 +100,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
 
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
-                out["lambda_theta"] = Array{Float64}(undef, J - 1, 2)
+            
                 out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
                 out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             end
@@ -156,7 +156,6 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
             out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (n_save, J - 1, 2))
-                out["lambda_theta"] = Array{Float64}(undef, J - 1, 2)
                 out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
                 out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             end
@@ -472,18 +471,15 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
     if !isnothing(theta_accept_init)
         theta_accept = copy(theta_accept_init)
     end
-    lambda_theta = 0.1 * ones(J - 1)
+    lambda_theta = 0.01 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
-    Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
+    Sigma_theta_tune = [0.01 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
     Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
 
     if corr_fun == "matern"
-        theta_accept = zeros(J - 1)
-        lambda_theta = 0.1 * ones(J - 1)
-        theta_accept_batch = zeros(J - 1)
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
-        Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
+        Sigma_theta_tune = [0.01 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
         Sigma_theta_tune_chol = [cholesky(Sigma_theta_tune[j]) for j in 1:(J-1)]
     end
     if !isnothing(lambda_theta_init)
