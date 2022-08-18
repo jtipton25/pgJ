@@ -760,12 +760,31 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                         PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
                     ),
                 )
-                if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
-                    # eliminate Matern correlation function failure
-                    @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
-                    flush(stdout)
-                else
-                    R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
+                # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
+                #     # eliminate Matern correlation function failure
+                #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                #     flush(stdout)
+                # else
+                #     R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
+                    R_star = try
+                        Matrix(
+                            Hermitian(
+                                correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
+                            ),
+                        ) # broadcasting over D but not theta_star
+                    catch
+                        println("theta_star = ", theta_star)
+                        flush(stdout)
+                        @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                        if k <= params["n_adapt"]
+                                theta_accept_batch[j] -= 1.0 / 50.0
+                        else
+                            theta_accept[j] -= 1.0 / params["n_mcmc"]
+                        end
+                        theta_star = theta[:, j]
+                        R[j]
+                    end
+
                     Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))
                     Sigma_chol_star = try
                         cholesky(Sigma_star)
@@ -833,7 +852,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                             theta_accept[j] += 1.0 / params["n_mcmc"]
                         end
                     end
-                end
+                # end
             end
         end
 
