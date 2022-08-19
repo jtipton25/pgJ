@@ -671,6 +671,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     cholesky(Sigma_star)
                 catch
                     @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                    flush(stderr)
                     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
                 end
 
@@ -763,26 +764,40 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
                 #     # eliminate Matern correlation function failure
                 #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                        # flush(stderr)
                 #     flush(stdout)
                 # else
-                #     R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
-                    R_star = try
-                        Matrix(
-                            Hermitian(
-                                correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
-                            ),
-                        ) # broadcasting over D but not theta_star
-                    catch
+                    R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
+                    # R_star = try
+                    #     Matrix(
+                    #         Hermitian(
+                    #             correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
+                    #         ),
+                    #     ) # broadcasting over D but not theta_star
+                    # catch
+                    #     println("theta_star = ", theta_star)
+                    #     flush(stdout)
+                    #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                    #     if k <= params["n_adapt"]
+                    #             theta_accept_batch[j] -= 1.0 / 50.0
+                    #     else
+                    #         theta_accept[j] -= 1.0 / params["n_mcmc"]
+                    #     end
+                    #     theta_star = theta[:, j]
+                    #     R[j]
+                    # end
+                    if (any(isnan.(R_star)))
                         println("theta_star = ", theta_star)
                         flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                        flush(stderr)
                         if k <= params["n_adapt"]
-                                theta_accept_batch[j] -= 1.0 / 50.0
+                            theta_accept_batch[j] -= 1.0 / 50.0
                         else
                             theta_accept[j] -= 1.0 / params["n_mcmc"]
                         end
                         theta_star = theta[:, j]
-                        R[j]
+                        R_star = R[j]
                     end
 
                     Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))
@@ -792,8 +807,28 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                         println("theta_star = ", theta_star)
                         flush(stdout)
                         @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                        flush(stderr)
                         cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
                     end
+                    # Sigma_chol_star = try
+                    #     cholesky(R_star)
+                    # catch
+                    #     @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    # flush(stderr)
+                    #     try
+                    #          cholesky(Hermitian(Sigma_star + 1e-6 * I))
+                    #     catch
+                    #         @warn string("The Covariance matrix for updating theta has been moderately regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    # flush(stderr)
+                    #         try
+                    #             cholesky(Hermitian(Sigma_star + 1e-4 * I))
+                    #         catch
+                    #             @warn string("The Covariance matrix for updating theta has been strongly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    # flush(stderr)
+                    #             cholesky(Hermitian(Sigma_star + 1e-2 * I))
+                    #         end
+                    #     end
+                    # end
 
                     mh1 =
                         sum([

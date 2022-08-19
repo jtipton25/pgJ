@@ -638,34 +638,57 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
                 #     # eliminate Matern correlation function failure
                 #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
-                #     flush(stdout)
+                #     flush(stderr)
                 # else
                     # R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun))) # broadcasting over D but not theta_star
-                    R_star = try
-                        Matrix(
+                    R_star = Matrix(
                             Hermitian(
                                 correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
                             ),
                         ) # broadcasting over D but not theta_star
-                    catch
+                    if (any(isnan.(R_star)))
                         println("theta_star = ", theta_star)
                         flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                        flush(stderr)
                         if k <= params["n_adapt"]
                             theta_accept_batch[j] -= 1.0 / 50.0
                         else
                             theta_accept[j] -= 1.0 / params["n_mcmc"]
                         end
                         theta_star = theta[:, j]
-                        R[j]
+                        R_star = R[j]
                     end
                     Sigma_star = tau[j]^2 * R_star
                     R_chol_star = try
                         cholesky(R_star)
                     catch
                         @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                        flush(stderr)
                         cholesky(Hermitian(R_star + 1e-6 * I))
                     end
+                    # R_chol_star = try
+                    #     cholesky(R_star)
+                    # catch
+                    #     println("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #     # @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #     flush(stderr)
+                    #     try
+                    #          cholesky(Hermitian(R_star + 1e-6 * I))
+                    #     catch
+                    #         println("The Covariance matrix for updating theta has been moderately regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #         # @warn string("The Covariance matrix for updating theta has been moderately regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                              # flush(stderr)   
+                    #         try
+                    #             cholesky(Hermitian(R_star + 1e-4 * I))
+                    #         catch
+                    #             println("The Covariance matrix for updating theta has been strongly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #             # @warn string("The Covariance matrix for updating theta has been strongly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #             flush(stderr)
+                    #             cholesky(Hermitian(R_star + 1e-2 * I))
+                    #         end
+                    #     end
+                    # end
                     Sigma_chol_star = copy(R_chol_star)
                     Sigma_chol_star.U .*= tau[j]
                     mh1 =
