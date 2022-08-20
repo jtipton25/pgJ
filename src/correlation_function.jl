@@ -6,16 +6,24 @@ export matern
 """
     matern()
 
-Return an isotropic and stationary Matern covariance matrix with variance `tau2`, smoothness parameter `nu`, and range `rho` for a distance `d`
+Return an isotropic and stationary Matern covariance matrix with variance `tau2`, smoothness parameter `nu`, and range `phi` for a distance `d`
 """
-function matern(d, nu, rho)
-    if isapprox(d, 0.0, atol=1e-10)
-        1.0
-    else
-        inner = sqrt(2.0 * nu) * d / rho
-        return 2.0^(1.0 - nu) / gamma(nu) * (inner)^nu * besselk(nu, inner)
+function matern(d, nu, phi)
+    dd = d / phi
+    if isapprox(dd, 0.0, atol=1e-10)
+        # 1.0
+        dd = 1e-10
     end
+    return 1.0 / (2.0^(nu - 1.0) * gamma(nu)) * (dd^nu) * besselk(nu, dd)
 end
+# function matern(d, nu, phi)
+#     if isapprox(d, 0.0, atol=1e-10)
+#         1.0
+#     else
+#         inner = sqrt(2.0 * nu) * d / phi
+#         return 2.0^(1.0 - nu) / gamma(nu) * (inner)^nu * besselk(nu, inner)
+#     end
+# end
 
 # using Plots
 # d = LinRange(0.01, 3, 100)
@@ -28,7 +36,7 @@ end
 # plot!(d, cov2)
 # plot!(d, cov3)
 
-# # changing rho
+# # changing phi
 # cov1 = [matern(v, 1.0, 0.5, 0.5) for v in d]
 # cov2 = [matern(v, 1.0, 0.5, 1.5) for v in d]
 # cov3 = [matern(v, 1.0, 0.5, 2.5) for v in d]
@@ -42,7 +50,7 @@ export correlation_function
 """
 correlation_function()
 
-Return an isotropic and stationary correlation matrix with range or smoothness and range parameter `theta` range (`corr_fun = exponential`) or smoothness and range parameter `theta` (`corr_fun = "matern"`, the Matern smoothness parameter `nu` is `theta[1]` and range parameter `rho` is `theta[2]`) for a distance `d`
+Return an isotropic and stationary correlation matrix with range or smoothness and range parameter `theta` range (`corr_fun = exponential`) or smoothness and range parameter `theta` (`corr_fun = "matern"`, the Matern smoothness parameter `nu` is `theta[1]` and range parameter `phi` is `theta[2]`) for a distance `d`
 """
 function correlation_function(d, theta; corr_fun="exponential")
     @assert d >= 0 "d must be a nonnegative scalar"    
@@ -67,7 +75,7 @@ export covariance_function
 """
 covariance_function()
 
-Return an isotropic and stationary covariance matrix with variance `tau2`, range (`corr_fun = exponential`) or smoothness and range parameter `theta` (`corr_fun = "matern"`, the Matern smoothness parameter `nu` is `theta[1]` and range parameter `rho` is `theta[2]`), for a distance `d`
+Return an isotropic and stationary covariance matrix with variance `tau2`, range (`corr_fun = exponential`) or smoothness and range parameter `theta` (`corr_fun = "matern"`, the Matern smoothness parameter `nu` is `theta[1]` and range parameter `phi` is `theta[2]`), for a distance `d`
 """
 function covariance_function(d, tau2, theta; corr_fun="exponential")
     # add in checks
@@ -130,18 +138,18 @@ end
 # p12 = plot(d, cov12)
 
 # plot(p10, p11, p12, p1, p2, p3, p4, p5, p6, p7, p8, p9, layout = l,
-#     title=reshape(["exponential, rho = 0.25",
-#     "exponential, rho = 0.5",
-#     "exponential, rho = 0.75",
-#     "matern, nu = 0.5, rho = 0.25",
-#     "matern, nu = 0.5, rho = 0.5",
-#     "matern, nu = 0.5, rho = 0.75",
-#     "matern, nu = 1.5, rho = 0.25",
-#     "matern, nu = 1.5, rho = 0.5",
-#     "matern, nu = 1.5, rho = 0.75",
-#     "matern, nu = 2.5, rho = 0.25",
-#     "matern, nu = 2.5, rho = 0.5",
-#     "matern, nu = 2.5, rho = 0.75",
+#     title=reshape(["exponential, phi = 0.25",
+#     "exponential, phi = 0.5",
+#     "exponential, phi = 0.75",
+#     "matern, nu = 0.5, phi = 0.25",
+#     "matern, nu = 0.5, phi = 0.5",
+#     "matern, nu = 0.5, phi = 0.75",
+#     "matern, nu = 1.5, phi = 0.25",
+#     "matern, nu = 1.5, phi = 0.5",
+#     "matern, nu = 1.5, phi = 0.75",
+#     "matern, nu = 2.5, phi = 0.25",
+#     "matern, nu = 2.5, phi = 0.5",
+#     "matern, nu = 2.5, phi = 0.75",
     
 #     ], 1, 12), 
 #     titlefont = font(8),
