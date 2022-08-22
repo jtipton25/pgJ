@@ -58,6 +58,7 @@ else
     println("Model fitting took ",  out["runtime"]/(60*60*1000), " hours")
     flush(stdout)
 end
+# out = load("./output/pollen/pollen_overdispersed_fit.jld")
 
 # alert("Finished Overdispsersed fitting")
 

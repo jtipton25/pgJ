@@ -304,11 +304,13 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     Xbeta = X * beta
 
     # initialize sigma
-    sigma = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J - 1)
+    sigma2 = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J - 1)
+    sigma = sqrt.(sigma2)
     sigma[sigma.>5] .= 5
     if !isnothing(sigma_init)
         sigma = copy(sigma_init)
     end
+    sigma2 = sigma.^2
 
     # initialize theta (log-scale)
     if corr_fun == "exponential"
@@ -985,7 +987,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
         if (sample_sigma)
             Threads.@threads for j in 1:(J-1)
-                sigma_star = exp(rand(Normal(log(sigma[j]), sigma_tune[j])))
+                sigma2_star = exp(rand(Normal(log(sigma2[j]), sigma_tune[j])))
+                sigma_star = sqrt(sigma2_star)
                 Sigma_star = Matrix(Hermitian(tau[j]^2 * R[j] + sigma_star^2 * I))
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
@@ -1006,9 +1009,9 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     ]) +
                     logpdf(
                         InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]),
-                        sigma_star,
+                        sigma2_star,
                     ) +
-                    log(sigma_star)
+                    log(sigma2_star)
 
                 mh2 =
                     sum([
@@ -1022,9 +1025,9 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     ]) +
                     logpdf(
                         InverseGamma(priors["alpha_sigma"], priors["beta_sigma"]),
-                        sigma[j],
+                        sigma2[j],
                     ) +
-                    log(sigma[j])
+                    log(sigma2[j])
 
                 if correct_initial_variance
                     mh1 += logpdf(
@@ -1048,6 +1051,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
+                    sigma2[j] = sigma2_star
                     sigma[j] = sigma_star
                     Sigma[j] = Sigma_star
                     Sigma_chol[j] = Sigma_chol_star
