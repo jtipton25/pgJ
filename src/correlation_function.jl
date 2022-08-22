@@ -10,9 +10,9 @@ Return an isotropic and stationary Matern covariance matrix with variance `tau2`
 """
 function matern(d, nu, phi)
     dd = d / phi
-    if isapprox(dd, 0.0, atol=1e-10)
+    if isapprox(dd, 0.0, atol=1e-8)
         # 1.0
-        dd = 1e-10
+        dd = 1e-8
     end
     return 1.0 / (2.0^(nu - 1.0) * gamma(nu)) * (dd^nu) * besselk(nu, dd)
 end
