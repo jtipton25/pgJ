@@ -174,6 +174,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     #
     # return the MCMC output if the MCMC has fully run
     #
+
     if save_full
         if !isempty(out["k"])
             if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
@@ -305,8 +306,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
     # initialize sigma
     sigma2 = rand(Gamma(priors["alpha_sigma"], priors["beta_sigma"]), J - 1)
+    sigma2[sigma2.>25] .= 25
     sigma = sqrt.(sigma2)
-    sigma[sigma.>5] .= 5
     if !isnothing(sigma_init)
         sigma = copy(sigma_init)
     end
