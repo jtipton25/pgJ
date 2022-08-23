@@ -673,6 +673,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
                 catch
+                    println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "tau[j] = ", tau[j], "tau_star = ", tau_star)
+                    flush(stdout)
                     @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
                     flush(stderr)
                     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
@@ -790,7 +792,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     #     R[j]
                     # end
                     if (any(isnan.(R_star)))
-                        println("theta_star = ", theta_star)
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
                         flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
@@ -807,7 +809,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     Sigma_chol_star = try
                         cholesky(Sigma_star)
                     catch
-                        println("theta_star = ", theta_star)
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
                         flush(stdout)
                         @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
@@ -994,6 +996,8 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 Sigma_chol_star = try
                     cholesky(Sigma_star)
                 catch
+                    println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "sigma_star = ", sigma_star, "tau[j] = ", tau[j])
+                    flush(stdout)
                     @warn "The Covariance matrix for updating sigma2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
                     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
                 end
