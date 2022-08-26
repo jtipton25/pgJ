@@ -647,7 +647,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                             ),
                         ) # broadcasting over D but not theta_star
                     if (any(isnan.(R_star)))
-                        println("theta_star = ", theta_star)
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
@@ -663,6 +663,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     R_chol_star = try
                         cholesky(R_star)
                     catch
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
+                        flush(stdout)
                         @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
                         flush(stderr)
                         cholesky(Hermitian(R_star + 1e-6 * I))
