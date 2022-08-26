@@ -1,4 +1,4 @@
-# run script with nohup ./run-pollen.sh > pollen_out.txt &
+# run script with nohup ./run-pollen-cv.sh > cv_out.txt &
 # pollen_pg_stlm_script.jl
 echo "Running Julia script pollen_pg_stlm_cv_script.jl"
 nohup /home/jrtipton/julia-1.7.1/bin/julia -t 32 pollen_pg_stlm_cv_script.jl 
