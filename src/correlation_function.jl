@@ -1,6 +1,8 @@
 import SpecialFunctions.besselk
 import SpecialFunctions.gamma
 
+using Bessels
+
 export matern
 
 """
@@ -15,7 +17,9 @@ function matern(d, nu, phi)
     elseif isapprox(dd, 0.0, atol=1e-10)
         dd = 1e-10
     end
-    return 1.0 / (2.0^(nu - 1.0) * gamma(nu)) * (dd^nu) * besselk(nu, dd)
+    # return 1.0 / (2.0^(nu - 1.0) * gamma(nu)) * (dd^nu) * besselk(nu, dd)
+    return 1.0 / (2.0^(nu - 1.0) * Bessels.gamma(nu)) * (dd^nu) * Bessels.besselk(nu, dd)
+
 end
 # function matern(d, nu, phi)
 #     if isapprox(d, 0.0, atol=1e-10)
