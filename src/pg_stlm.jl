@@ -771,7 +771,9 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             theta_batch[save_idx, :, :] = theta'
             if (mod(k, 50) == 0)
                 println("Batch acceptance for theta = ", theta_accept_batch)
+                flush(stdout)
                 println("lambda_theta = ", lambda_theta)
+                flush(stdout)
                 out_tuning = update_tuning_mv_mat(
                     k,
                     theta_accept_batch,
@@ -786,6 +788,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 Sigma_theta_tune = out_tuning["Sigma_tune"]
                 Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
                 println("lambda_theta = ", lambda_theta)
+                flush(stdout)
             end
         end
 
