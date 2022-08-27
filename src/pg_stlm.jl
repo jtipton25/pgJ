@@ -634,14 +634,21 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
         if (sample_theta)
             Threads.@threads for j in 1:(J-1)
-                theta_star = rand(MvNormal(theta[:, j], sqrt(lambda_theta[j]) * PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])))
+                theta_star = rand(
+                    MvNormal(
+                        theta[:, j],
+                        sqrt(lambda_theta[j]) *
+                        PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])
+                    )
+                )
                 # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
                 #     # eliminate Matern correlation function failure
                 #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                 #     flush(stderr)
                 # else
                     # R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun))) # broadcasting over D but not theta_star
-                    R_star = Matrix(
+                    R_star =
+                        Matrix(
                             Hermitian(
                                 correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
                             ),
@@ -667,7 +674,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         flush(stdout)
                         @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
                         flush(stderr)
-                        cholesky(Hermitian(R_star + 1e-6 * I))
+                        cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
                     end
                     # R_chol_star = try
                     #     cholesky(R_star)
@@ -763,6 +770,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             end
             theta_batch[save_idx, :, :] = theta'
             if (mod(k, 50) == 0)
+                println("Batch acceptance for theta = ", theta_accept_batch)
+                println("lambda_theta = ", lambda_theta)
                 out_tuning = update_tuning_mv_mat(
                     k,
                     theta_accept_batch,
@@ -776,6 +785,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 theta_batch = out_tuning["batch_samples"]
                 Sigma_theta_tune = out_tuning["Sigma_tune"]
                 Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
+                println("lambda_theta = ", lambda_theta)
             end
         end
 
