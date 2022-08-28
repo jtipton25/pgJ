@@ -1,3 +1,4 @@
+using StatsBase
 include("update_tuning.jl")
 include("correlation_function.jl")
 
@@ -633,7 +634,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         #
 
         if (sample_theta)
-            Threads.@threads for j in 1:(J-1)
+            # Threads.@threads 
+            for j in 1:(J-1)
                 theta_star = rand(
                     MvNormal(
                         theta[:, j],
@@ -656,6 +658,10 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     if (any(isnan.(R_star)))
                         println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stdout)
+                        println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
+                        flush(stdout)
+                        println("R_star summary = ", StatsBase.summarystats(vec(R_star)))
+                        flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
                         if k <= params["n_adapt"]
@@ -672,9 +678,19 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     catch
                         println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stdout)
-                        @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                        # @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                        # flush(stderr)
+                        # cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
+                        if k <= params["n_adapt"]
+                            theta_accept_batch[j] -= 1.0 / 50.0
+                        else
+                            theta_accept[j] -= 1.0 / params["n_mcmc"]
+                        end
+                        theta_star = theta[:, j]
+                        R_star = R[j]
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stderr)
-                        cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
+                        R_chol[j]
                     end
                     # R_chol_star = try
                     #     cholesky(R_star)
