@@ -692,7 +692,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         R_star = R[j]
                         println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stdout)
-                        R_chol[j]
+                        copy(R_chol[j])
                     end
                     # R_chol_star = try
                     #     cholesky(R_star)
