@@ -660,8 +660,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         flush(stdout)
                         println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
                         flush(stdout)
-                        println("R_star summary = ", StatsBase.summarystats(vec(R_star)))
-                        flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
                         if k <= params["n_adapt"]
