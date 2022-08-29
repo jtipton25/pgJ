@@ -2,6 +2,24 @@ using StatsBase
 include("update_tuning.jl")
 include("correlation_function.jl")
 
+function update_Sigma(R, tau)
+    J = size(R, 1) + 1
+    Sigma = deepcopy(R)    
+    for j in 1:(J-1)
+        Sigma[j].mat .*= tau[j]^2
+        Sigma[j].chol.U .*= tau[j]
+    end
+    return Sigma
+end
+
+function update_Sigma_star(R, tau)
+    Sigma = deepcopy(R)    
+    Sigma.mat .*= tau^2
+    Sigma.chol.U .*= tau
+    return Sigma
+end
+
+
 # function pg_stlm(Y, X, locs, params, priors, n_cores)
 export pg_stlm
 
@@ -250,7 +268,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
     # TODO add in custom priors for mu_beta and Sigma_beta
 
-    Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
+    Sigma_beta_chol = cholesky(Hermitian(Sigma_beta))
     Sigma_beta_inv = inv(Sigma_beta_chol)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
@@ -317,26 +335,32 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     D = pairwise(Euclidean(), locs, locs, dims=1)
 
     # R = [Matrix(Hermitian(exp.(-D / exp(v)))) for v in theta]
-    R = [Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
-    Sigma = [tau[j]^2 * R[j] for j in 1:(J-1)]
-    R_chol = [cholesky(v) for v in R]
-    Sigma_chol = copy(R_chol)
-    for j in 1:(J-1)
-        Sigma_chol[j].U .*= tau[j]
-    end
+    R = [PDMat(correlation_function.(D, (exp.(v),), corr_fun=corr_fun)) for v in eachcol(theta)] # broadcasting over D but not theta
+    
+    # Figure out how to make this more efficient by not recalculating the cholesky factor each time...
+    # Sigma = [tau[j]^2 * R[j] for j in 1:(J-1)]
 
-    Sigma_inv = [inv(v) for v in Sigma_chol]
+    Sigma = update_Sigma(R, tau)
+
+    # R = [Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for v in eachcol(theta)] # broadcasting over D but not theta
+    # R_chol = [cholesky(v) for v in R]      
+    # Sigma_chol = copy(R_chol)
+    # for j in 1:(J-1)
+    #     Sigma_chol[j].U .*= tau[j]
+    # end
+
+    Sigma_inv = [inv(v) for v in Sigma];
 
 
     # initialize eta
     eta = Array{Float64}(undef, (N, J - 1, n_time))
     for j in 1:(J-1)
         eta[:, j, 1] =
-            Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
+            Xbeta[:, j] + rand(MvNormal(zeros(N), Sigma[j]))
         for t = 2:n_time
             eta[:, j, t] =
                 Xbeta[:, j] +
-                rand(MvNormal(rho[j] * eta[:, j, t-1], PDMat(Sigma[j], Sigma_chol[j])), 1)
+                rand(MvNormal(rho[j] * eta[:, j, t-1], Sigma[j]))
         end
     end
     if !isnothing(eta_init)
@@ -650,16 +674,15 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 # else
                     # R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun))) # broadcasting over D but not theta_star
                     R_star =
-                        Matrix(
-                            Hermitian(
-                                correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
-                            ),
+                        PDMat(                            
+                            correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
                         ) # broadcasting over D but not theta_star
+                       
                     if (any(isnan.(R_star)))
                         println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
                         flush(stdout)
-                        println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
-                        flush(stdout)
+                        # println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
+                        # flush(stdout)
                         @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
                         flush(stderr)
                         if k <= params["n_adapt"]
@@ -667,33 +690,34 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         else
                             theta_accept[j] -= 1.0 / params["n_mcmc"]
                         end
-                        theta_star = theta[:, j]
-                        R_star = R[j]
+                        theta_star = deepcopy(theta[:, j])
+                        R_star = deepcopy(R[j])
                     end
-                    Sigma_star = tau[j]^2 * R_star
-                    R_chol_star = try
-                        cholesky(R_star)
-                    catch
-                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
-                        flush(stdout)
-                        println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
-                        flush(stdout)
-                        println("R_star summary = ", StatsBase.summarystats(vec(R_star)))
-                        flush(stdout)
-                        # @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
-                        # flush(stderr)
-                        # cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
-                        if k <= params["n_adapt"]
-                            theta_accept_batch[j] -= 1.0 / 50.0
-                        else
-                            theta_accept[j] -= 1.0 / params["n_mcmc"]
-                        end
-                        theta_star = theta[:, j]
-                        R_star = R[j]
-                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
-                        flush(stdout)
-                        copy(R_chol[j])
-                    end
+                    Sigma_star = update_Sigma_star(R_star, tau[j])
+                    # Sigma_star = tau[j]^2 * R_star
+                    # R_chol_star = try
+                    #     cholesky(R_star)
+                    # catch
+                    #     println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
+                    #     flush(stdout)
+                    #     println("R[j] summary = ", StatsBase.summarystats(vec(R[j])))
+                    #     flush(stdout)
+                    #     println("R_star summary = ", StatsBase.summarystats(vec(R_star)))
+                    #     flush(stdout)
+                    #     # @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                    #     # flush(stderr)
+                    #     # cholesky(Matrix(Hermitian(R_star + 1e-6 * I)))
+                    #     if k <= params["n_adapt"]
+                    #         theta_accept_batch[j] -= 1.0 / 50.0
+                    #     else
+                    #         theta_accept[j] -= 1.0 / params["n_mcmc"]
+                    #     end
+                    #     theta_star = theta[:, j]
+                    #     R_star = R[j]
+                    #     println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
+                    #     flush(stdout)
+                    #     copy(R_chol[j])
+                    # end
                     # R_chol_star = try
                     #     cholesky(R_star)
                     # catch
@@ -716,14 +740,14 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     #         end
                     #     end
                     # end
-                    Sigma_chol_star = copy(R_chol_star)
-                    Sigma_chol_star.U .*= tau[j]
+                    # Sigma_chol_star = copy(R_chol_star)
+                    # Sigma_chol_star.U .*= tau[j]
                     mh1 =
                         sum([
                             logpdf(
                                 MvNormal(
                                     (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma_star, Sigma_chol_star),
+                                    Sigma_star,
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -735,7 +759,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                             logpdf(
                                 MvNormal(
                                     (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                    Sigma[j],
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -744,20 +768,20 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
                     if correct_initial_variance
                         mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma_star),
                             eta[:, j, 1],
                         )
                         mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
                             eta[:, j, 1],
                         )
                     else
                         mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                            MvNormal(Xbeta[:, j], Sigma_star),
                             eta[:, j, 1],
                         )
                         mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                            MvNormal(Xbeta[:, j], Sigma[j]),
                             eta[:, j, 1],
                         )
                     end    
@@ -767,9 +791,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         theta[:, j] = theta_star
                         R[j] = R_star
                         Sigma[j] = Sigma_star
-                        R_chol[j] = R_chol_star
-                        Sigma_chol[j] = Sigma_chol_star
-                        Sigma_inv[j] = inv(Sigma_chol_star)
+                        Sigma_inv[j] = inv(Sigma_star)
                         if k <= params["n_adapt"]
                             theta_accept_batch[j] += 1.0 / 50.0
                         else
@@ -818,7 +840,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                             logpdf(
                                 MvNormal(
                                     (1 - rho_star) * Xbeta[:, j] + rho_star * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                    Sigma[j],
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -829,7 +851,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                             logpdf(
                                 MvNormal(
                                     (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                    Sigma[j],
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -837,11 +859,11 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
                     if correct_initial_variance
                         mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho_star^2) * Sigma[j]),
                             eta[:, j, 1],
                         ) 
                         mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
                             eta[:, j, 1],
                         )
                     end # no rho in the first eta when initial variance isn't corrected
