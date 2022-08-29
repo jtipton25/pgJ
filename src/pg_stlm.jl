@@ -646,10 +646,8 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     ),
                 )
 
-                Sigma[j] = tau[j]^2 * R[j]
-                Sigma_chol[j] = copy(R_chol[j])
-                Sigma_chol[j].U .*= tau[j]
-                Sigma_inv[j] = inv(Sigma_chol[j])
+                Sigma[j] = update_Sigma_star(R[j], tau[j])
+                Sigma_inv[j] = inv(Sigma[j])
             end
         end
 
