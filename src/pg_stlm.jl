@@ -58,7 +58,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     theta_accept_init = nothing
     lambda_theta_init = nothing
     Sigma_theta_tune_init = nothing
-    Sigma_theta_tune_chol_init = nothing
+    # Sigma_theta_tune_chol_init = nothing
     rho_tune_init = nothing
 
     if save_full
@@ -81,7 +81,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             theta_accept_init = out["theta_accept"]
             lambda_theta_init = out["lambda_theta"]
             Sigma_theta_tune_init = out["Sigma_theta_tune"]
-            Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
+            # Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
             rho_accept_init = out["rho_accept"]
             rho_tune_init = out["rho_tune"]
         else
@@ -99,7 +99,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [0.01 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
                 "rho_accept" => 0,
                 "Y" => Y,
                 "X" => X,
@@ -108,11 +108,11 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
             )
-            out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+            # out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
-                out["Sigma_theta_tune"] = [0.01 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-                out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+                out["Sigma_theta_tune"] = [PDMat(0.01 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
+                # out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             end
         end
     else
@@ -132,7 +132,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             theta_accept_init = out["theta_accept"]
             lambda_theta_init = out["lambda_theta"]
             Sigma_theta_tune_init = out["Sigma_theta_tune"]
-            Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
+            # Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
             rho_accept_init = out["rho_accept"]
             rho_tune_init = out["rho_tune"]
         else
@@ -150,7 +150,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [0.01 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
                 "rho_accept" => 0,
                 "Y" => Y,
                 "X" => X,
@@ -159,11 +159,11 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
             )
-            out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+            # out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (n_save, J - 1, 2))
-                out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-                out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+                out["Sigma_theta_tune"] = [PDMat(0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
+                # out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
             end
         end
     end
@@ -179,7 +179,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
                 delete!(out, "eta_init")
                 delete!(out, "beta_init")
-                delete!(out, "Sigma_theta_tune_chol")
+                # delete!(out, "Sigma_theta_tune_chol")
                 delete!(out, "Sigma_theta_tune")
                 delete!(out, "rho_init")
                 delete!(out, "rho_tune")
@@ -200,7 +200,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
             delete!(out, "eta_init")
             delete!(out, "beta_init")
-            delete!(out, "Sigma_theta_tune_chol")
+            # delete!(out, "Sigma_theta_tune_chol")
             delete!(out, "Sigma_theta_tune")
             delete!(out, "rho_init")
             delete!(out, "rho_tune")
@@ -447,13 +447,13 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     lambda_theta = 0.01 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
-    Sigma_theta_tune = [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
-    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
+    Sigma_theta_tune = [PDMat(0.1 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1]
+    # Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
 
     if corr_fun == "matern"
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
-        Sigma_theta_tune = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-        Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
+        Sigma_theta_tune = [PDMat(0.1 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
+        # Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
     end
     if !isnothing(lambda_theta_init)
         lambda_theta = copy(lambda_theta_init)
@@ -461,9 +461,9 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     if !isnothing(Sigma_theta_tune_init)
         Sigma_theta_tune = copy(Sigma_theta_tune_init)
     end
-    if !isnothing(Sigma_theta_tune_chol_init)
-        Sigma_theta_tune_chol = copy(Sigma_theta_tune_chol_init)
-    end
+    # if !isnothing(Sigma_theta_tune_chol_init)
+    #     Sigma_theta_tune_chol = copy(Sigma_theta_tune_chol_init)
+    # end
 
     # tuning for rho
     rho_accept = zeros(J - 1)
@@ -656,13 +656,12 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         #
 
         if (sample_theta)
-            # Threads.@threads 
-            for j in 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
                 theta_star = rand(
                     MvNormal(
                         theta[:, j],
                         sqrt(lambda_theta[j]) *
-                        PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j])
+                        PDMat(Sigma_theta_tune[j])
                     )
                 )
                 # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
@@ -695,7 +694,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                             flush(stdout)
                             @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
                             flush(stderr)
-                            
+
                             PDMat(R_star + 1e-6 * I)
                         end
                     end
@@ -822,14 +821,13 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     theta_accept_batch,
                     lambda_theta,
                     theta_batch,
-                    Sigma_theta_tune,
-                    Sigma_theta_tune_chol
+                    Sigma_theta_tune
                 )
                 theta_accept_batch = out_tuning["accept"]
                 lambda_theta = out_tuning["lambda"]
                 theta_batch = out_tuning["batch_samples"]
                 Sigma_theta_tune = out_tuning["Sigma_tune"]
-                Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
+                # Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
             end
         end
 
@@ -958,7 +956,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 out["theta_accept"] = theta_accept
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
-                out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
+                # out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
 
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
@@ -994,7 +992,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 out["theta_accept"] = theta_accept
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
-                out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
+                # out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
                 tic = now()
@@ -1016,7 +1014,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
     if !save_full
         delete!(out, "eta_init")
         delete!(out, "beta_init")
-        delete!(out, "Sigma_theta_tune_chol")
+        # delete!(out, "Sigma_theta_tune_chol")
         delete!(out, "Sigma_theta_tune")
         delete!(out, "rho_init")
         delete!(out, "rho_tune")
