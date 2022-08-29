@@ -268,7 +268,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
 
     # TODO add in custom priors for mu_beta and Sigma_beta
 
-    Sigma_beta_chol = cholesky(Hermitian(Sigma_beta))
+    Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
     Sigma_beta_inv = inv(Sigma_beta_chol)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
