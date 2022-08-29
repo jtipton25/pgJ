@@ -671,10 +671,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 #     flush(stderr)
                 # else
                     # R_star = Matrix(Hermitian(correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun))) # broadcasting over D but not theta_star
-                    R_star =
-                        PDMat(                            
-                            correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
-                        ) # broadcasting over D but not theta_star
+                    R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun)
                        
                     if (any(isnan.(R_star)))
                         println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
@@ -690,6 +687,17 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                         end
                         theta_star = deepcopy(theta[:, j])
                         R_star = deepcopy(R[j])
+                    else
+                        R_star = try 
+                            PDMat(R_star)
+                        catch
+                            println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j])
+                            flush(stdout)
+                            @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                            flush(stderr)
+                            
+                            PDMat(R_star + 1e-6 * I)
+                        end
                     end
                     Sigma_star = update_Sigma_star(R_star, tau[j])
                     # Sigma_star = tau[j]^2 * R_star
