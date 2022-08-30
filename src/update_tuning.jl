@@ -48,6 +48,8 @@ end
 
 # NOT TESTED
 function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune, Sigma_tune_chol)
+    println("This version of update_tuning_mv is in the process of being deprecated")
+    flush(stdout)
     # determine optimal acceptance rates based on dimension of parameter
     arr = [0.44, 0.35, 0.32, 0.25, 0.234] # optimal tuning rates
     dimension = size(batch_samples, 1)
@@ -82,11 +84,48 @@ function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune, Sigma_tu
 
 end
 
+# NOT TESTED
+function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune)
+    # determine optimal acceptance rates based on dimension of parameter
+    arr = [0.44, 0.35, 0.32, 0.25, 0.234] # optimal tuning rates
+    dimension = size(batch_samples, 1)
+    if dimension >= 5
+        dimension = 5
+    end
+    optimal_accept = arr[dimension]
+
+    # setup tuning adjustment
+    batch_size = size(batch_samples, 1)
+    d = size(batch_samples, 2)
+    times_adapted = k / 50
+    gamma1 = 1.0 / ((times_adapted + 3.0)^(0.8))
+    gamma2 = 10.0 * gamma1
+    adapt_factor = exp(gamma2 * (accept - optimal_accept))
+    lambda = lambda * adapt_factor
+    for j in 1:d
+    	mean_batch = mean(batch_samples[:, j]) # check the dims
+	for i in 1:batch_size
+	    batch_samples[i, j] .-= mean_batch
+    end
+    Sigma_tune = PDMat(Sigma_tune.mat + gamma1 * (batch_samples_out' * batch_samples_out / (50.0 - 1.0) - Sigma_tune.mat))
+    accept = 0.0
+    batch_sample = zeros(batch_size, d)
+    Dict{String, Any}(
+                    "accept" => accept, 
+                    "lambda" => lambda,
+                    "batch_samples" => batch_samples,
+                    "Sigma_tune" => Sigma_tune
+                    )
+
+end
+
 
 # NOT TESTED OR WRITTEN -- WILL BE DEPRECATED WITHOUT CHOLESKY INSTEAD WILL USE PDMat
 # function updated_tuning_mv_mat
 # NOT TESTED
 function update_tuning_mv_mat(k, accept, lambda, batch_samples, Sigma_tune, Sigma_tune_chol)
+    println("This version of update_tuning_mv_mat is in the process of being deprecated")
+    flush(stdout)
     # determine optimal acceptance rates based on dimension of parameter
     arr = [0.44, 0.35, 0.32, 0.25, 0.234] # optimal tuning rates
     dimension = size(batch_samples, 2)

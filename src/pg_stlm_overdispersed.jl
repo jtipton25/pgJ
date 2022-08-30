@@ -1,6 +1,24 @@
 include("update_tuning.jl")
 include("correlation_function.jl")
 
+function update_Sigma(R, tau)
+    J = size(R, 1) + 1
+    Sigma = deepcopy(R)    
+    for j in 1:(J-1)
+        Sigma[j].mat .*= tau[j]^2
+        Sigma[j].chol.U .*= tau[j]
+    end
+    return Sigma
+end
+
+function update_Sigma_star(R, tau)
+    Sigma = deepcopy(R)    
+    Sigma.mat .*= tau^2
+    Sigma.chol.U .*= tau
+    return Sigma
+end
+
+
 # function pg_stlm(Y, X, locs, params, priors, n_cores)
 
 export pg_stlm_overdispersed
@@ -46,8 +64,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     theta_accept_init = nothing
     lambda_theta_init = nothing
     Sigma_theta_tune_init = nothing
-    Sigma_theta_tune_chol_init = nothing
-
 
     if save_full
         if isfile(path)
@@ -70,7 +86,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
             theta_accept_init = out["theta_accept"]
             lambda_theta_init = out["lambda_theta"]
             Sigma_theta_tune_init = out["Sigma_theta_tune"]
-            Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
             rho_accept_init = out["rho_accept"]
             rho_tune_init = out["rho_tune"]
             sigma_accept_init = out["sigma_accept"]
@@ -93,7 +108,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [0.01 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
                 "rho_accept" => 0,
                 "sigma_accept" => 0,
                 "tau_accept" => 0,
@@ -104,12 +119,10 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
             )
-            out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
 
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
-                out["Sigma_theta_tune"] = [0.01 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-                out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+                out["Sigma_theta_tune"] = [PDMat(0.01 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
             end
         end
     else
@@ -130,7 +143,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
             theta_accept_init = out["theta_accept"]
             lambda_theta_init = out["lambda_theta"]
             Sigma_theta_tune_init = out["Sigma_theta_tune"]
-            Sigma_theta_tune_chol_init = out["Sigma_theta_tune_chol"]
             rho_accept_init = out["rho_accept"]
             rho_tune_init = out["rho_tune"]
             sigma_accept_init = out["sigma_accept"]
@@ -153,7 +165,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [0.1 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(0.1 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
                 "rho_accept" => 0,
                 "Y" => Y,
                 "X" => X,
@@ -162,11 +174,9 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "priors" => priors,
                 "runtime" => Int(0) # milliseconds runtime as an Int
             )
-            out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
-            if corr_fun == "matern"
+                        if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (n_save, J - 1, 2))
-                out["Sigma_theta_tune"] = [0.1 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-                out["Sigma_theta_tune_chol"] = [cholesky(Matrix(Hermitian(out["Sigma_theta_tune"][j]))) for j in 1:(J-1)]
+                out["Sigma_theta_tune"] = [PDMat(0.1 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
             end
         end
     end
@@ -181,7 +191,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                 delete!(out, "eta_init")
                 delete!(out, "beta_init")
-                delete!(out, "Sigma_theta_tune_chol")
                 delete!(out, "Sigma_theta_tune")
                 delete!(out, "rho_init")
                 delete!(out, "rho_tune")
@@ -207,7 +216,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
             delete!(out, "eta_init")
             delete!(out, "beta_init")
-            delete!(out, "Sigma_theta_tune_chol")
             delete!(out, "Sigma_theta_tune")
             delete!(out, "rho_init")
             delete!(out, "rho_tune")
@@ -276,12 +284,10 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     # Sigma_beta = Diagonal(10.0 .* ones(p))
 
     mu_beta = priors["mu_beta"]
-    Sigma_beta = priors["Sigma_beta"]
+    Sigma_beta = PDMat(priors["Sigma_beta"])
 
     # TODO add in custom priors for mu_beta and Sigma_beta
-
-    Sigma_beta_chol = cholesky(Matrix(Hermitian(Sigma_beta)))
-    Sigma_beta_inv = inv(Sigma_beta_chol)
+    Sigma_beta_inv = inv(Sigma_beta)
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
 
     # the first case using the pre-computed cholesky is much faster
@@ -296,7 +302,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     # @time beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta)), J-1);
 
     # initialize beta
-    beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J - 1)
+    beta = rand(MvNormal(mu_beta, Sigma_beta), J - 1)
     if !isnothing(beta_init)
         beta = copy(beta_init)
     end
@@ -358,24 +364,25 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     D = pairwise(Euclidean(), locs, locs, dims=1)
 
     # R = [exp.(-D / exp(v)) for v in theta]
-    R = [
-        Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for
-        v in eachcol(theta)
-    ] # broadcasting over D but not theta
-    Sigma = [Matrix(Hermitian(tau[j]^2 * R[j] + sigma[j]^2 * I)) for j in 1:(J-1)]
-    Sigma_chol = [cholesky(v) for v in Sigma]
-    Sigma_inv = [inv(v) for v in Sigma_chol]
+    # R = [
+    #     Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for
+    #     v in eachcol(theta)
+    # ] # broadcasting over D but not theta
+    R = [correlation_function.(D, (exp.(v),), corr_fun=corr_fun) for v in eachcol(theta)] # broadcasting over D but not theta
+    Sigma = [PDMat(tau[j]^2 * R[j] + sigma[j]^2 * I) for j in 1:(J-1)]
+    # Sigma_chol = [cholesky(v) for v in Sigma]
+    Sigma_inv = [inv(v) for v in Sigma]
 
 
     # initialize eta
     eta = Array{Float64}(undef, (N, J - 1, n_time))
     for j in 1:(J-1)
         eta[:, j, 1] =
-            Xbeta[:, j] + rand(MvNormal(zeros(N), PDMat(Sigma[j], Sigma_chol[j])), 1)
+            Xbeta[:, j] + rand(MvNormal(zeros(N), Sigma[j]), 1)
         for t = 2:n_time
             eta[:, j, t] =
                 Xbeta[:, j] +
-                rand(MvNormal(rho[j] * eta[:, j, t-1], PDMat(Sigma[j], Sigma_chol[j])), 1)
+                rand(MvNormal(rho[j] * eta[:, j, t-1], Sigma[j]), 1)
         end
     end
     if !isnothing(eta_init)
@@ -462,13 +469,11 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     lambda_theta = 0.01 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
-    Sigma_theta_tune = [0.01 * (1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
-    Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
+    Sigma_theta_tune = [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1]
 
     if corr_fun == "matern"
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
-        Sigma_theta_tune = [0.01 * (1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
-        Sigma_theta_tune_chol = [cholesky(Matrix(Hermitian(Sigma_theta_tune[j]))) for j in 1:(J-1)]
+        Sigma_theta_tune = [PDMat(0.01 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
     end
     if !isnothing(lambda_theta_init)
         lambda_theta = copy(lambda_theta_init)
@@ -476,10 +481,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     if !isnothing(Sigma_theta_tune_init)
         Sigma_theta_tune = copy(Sigma_theta_tune_init)
     end
-    if !isnothing(Sigma_theta_tune_chol_init)
-        Sigma_theta_tune_chol = copy(Sigma_theta_tune_chol_init)
-    end
-
+    
     # tuning for rho
     rho_accept = zeros(J - 1)
     if !isnothing(rho_accept_init)
@@ -669,23 +671,32 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         if (sample_tau)
             Threads.@threads for j in 1:(J-1)
                 tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
-                Sigma_star = Matrix(Hermitian(tau_star^2 * R[j] + sigma[j]^2 * I))
-                Sigma_chol_star = try
-                    cholesky(Sigma_star)
+                # Sigma_star = PDMat(tau_star^2 * R[j] + sigma[j]^2 * I)
+                Sigma_star = try
+                    PDMat(tau_star^2 * R[j] + sigma[j]^2 * I)
                 catch
-                    println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "tau[j] = ", tau[j], "tau_star = ", tau_star)
+                    println("theta[:,j] = ", theta[:, j], "tau_star = ", tau_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
                     flush(stdout)
-                    @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                    @warn string("The Covariance matrix for updating tau has been mildly regularized with tau_star = ", tau_star, ". If this warning is rare, it should be ok to ignore it.")
                     flush(stderr)
-                    cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                    PDMat(tau_star^2 * R[j] + sigma[j]^2 * I + 1e-6 * I)
                 end
+                # Sigma_chol_star = try
+                #     cholesky(Sigma_star)
+                # catch
+                #     println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "tau[j] = ", tau[j], "tau_star = ", tau_star)
+                #     flush(stdout)
+                #     @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                #     flush(stderr)
+                #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                # end
 
                 mh1 =
                     sum([
                         logpdf(
                             MvNormal(
                                 (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
+                                Sigma_star,
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
@@ -701,7 +712,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                         logpdf(
                             MvNormal(
                                 (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
+                                Sigma[j],
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
@@ -711,20 +722,20 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                 if correct_initial_variance
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma_star),
                         eta[:, j, 1],
                     )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
                         eta[:, j, 1],
                     )
                 else
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], Sigma_star),
                         eta[:, j, 1],
                     )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], Sigma[j]),
                         eta[:, j, 1],
                     )
                 end
@@ -733,8 +744,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 if mh > rand(Uniform(0, 1))
                     tau[j] = tau_star
                     Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    Sigma_inv[j] = inv(Sigma_star)
                     if k <= params["n_adapt"]
                         tau_accept_batch[j] += 1.0 / 50.0
                     else
@@ -763,7 +773,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     MvNormal(
                         theta[:, j],
                         sqrt(lambda_theta[j]) *
-                        PDMat(Sigma_theta_tune[j], Sigma_theta_tune_chol[j]),
+                        Sigma_theta_tune[j],
                     ),
                 )
                 # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
@@ -805,16 +815,25 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                         R_star = R[j]
                     end
 
-                    Sigma_star = Matrix(Hermitian(tau[j]^2 * R_star + sigma[j]^2 * I))
-                    Sigma_chol_star = try
-                        cholesky(Sigma_star)
+                    Sigma_star = try
+                        PDMat(tau[j]^2 * R_star + sigma[j]^2 * I)
                     catch
-                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
+                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
                         flush(stdout)
-                        @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                        @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
                         flush(stderr)
-                        cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                        PDMat(tau[j]^2 * R_star + sigma[j]^2 * I + 1e-6 * I)
                     end
+
+                    # Sigma_chol_star = try
+                    #     cholesky(Sigma_star)
+                    # catch
+                    #     println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
+                    #     flush(stdout)
+                    #     @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                    #     flush(stderr)
+                    #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                    # end
                     # Sigma_chol_star = try
                     #     cholesky(R_star)
                     # catch
@@ -909,14 +928,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     theta_accept_batch,
                     lambda_theta,
                     theta_batch,
-                    Sigma_theta_tune,
-                    Sigma_theta_tune_chol,
+                    Sigma_theta_tune
                 )
                 theta_accept_batch = out_tuning["accept"]
                 lambda_theta = out_tuning["lambda"]
                 theta_batch = out_tuning["batch_samples"]
                 Sigma_theta_tune = out_tuning["Sigma_tune"]
-                Sigma_theta_tune_chol = out_tuning["Sigma_tune_chol"]
             end
         end
 
@@ -992,22 +1009,32 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
             Threads.@threads for j in 1:(J-1)
                 sigma2_star = exp(rand(Normal(log(sigma2[j]), sigma_tune[j])))
                 sigma_star = sqrt(sigma2_star)
-                Sigma_star = Matrix(Hermitian(tau[j]^2 * R[j] + sigma_star^2 * I))
-                Sigma_chol_star = try
-                    cholesky(Sigma_star)
+                Sigma_star = try
+                    PDMat(tau[j]^2 * R[j] + sigma_star^2 * I)
                 catch
-                    println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "sigma_star = ", sigma_star, "tau[j] = ", tau[j])
+                    println("theta[:,j] = ", theta[:, j], "tau[j] = ", tau[j], "sigma_star = ", sigma_star, "sigma[j] = ", sigma[j])
                     flush(stdout)
-                    @warn "The Covariance matrix for updating sigma2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                    @warn string("The Covariance matrix for updating sigma has been mildly regularized with sigma_star = ", sigma_star, ". If this warning is rare, it should be ok to ignore it.")
+                    flush(stderr)
+                    PDMat(tau[j]^2 * R[j] + sigma_star^2 * I + 1e-6 * I)
                 end
+
+                # Sigma_star = Matrix(Hermitian(tau[j]^2 * R[j] + sigma_star^2 * I))
+                # Sigma_chol_star = try
+                #     cholesky(Sigma_star)
+                # catch
+                #     println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "sigma_star = ", sigma_star, "tau[j] = ", tau[j])
+                #     flush(stdout)
+                #     @warn "The Covariance matrix for updating sigma2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
+                #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
+                # end
 
                 mh1 =
                     sum([
                         logpdf(
                             MvNormal(
                                 (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma_star, Sigma_chol_star),
+                                Sigma_star,
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
@@ -1023,7 +1050,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                         logpdf(
                             MvNormal(
                                 (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                PDMat(Sigma[j], Sigma_chol[j]),
+                                Sigma[j],
                             ),
                             eta[:, j, t],
                         ) for t = 2:n_time
@@ -1036,20 +1063,20 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                 if correct_initial_variance
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma_star),
                         eta[:, j, 1],
                     )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
                         eta[:, j, 1],
                     )
                 else
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
+                        MvNormal(Xbeta[:, j], Sigma_star),
                         eta[:, j, 1],
                     )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
+                        MvNormal(Xbeta[:, j], Sigma[j]),
                         eta[:, j, 1],
                     )
                 end
@@ -1059,8 +1086,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     sigma2[j] = sigma2_star
                     sigma[j] = sigma_star
                     Sigma[j] = Sigma_star
-                    Sigma_chol[j] = Sigma_chol_star
-                    Sigma_inv[j] = inv(Sigma_chol_star)
+                    Sigma_inv[j] = inv(Sigma_star)
                     if k <= params["n_adapt"]
                         sigma_accept_batch[j] += 1.0 / 50.0
                     else
@@ -1149,7 +1175,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 out["theta_accept"] = theta_accept
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
-                out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
 
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
@@ -1191,7 +1216,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 out["theta_accept"] = theta_accept
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
-                out["Sigma_theta_tune_chol"] = Sigma_theta_tune_chol
+
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
                 tic = now()
@@ -1212,7 +1237,6 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     if !save_full
         delete!(out, "eta_init")
         delete!(out, "beta_init")
-        delete!(out, "Sigma_theta_tune_chol")
         delete!(out, "Sigma_theta_tune")
         delete!(out, "rho_init")
         delete!(out, "rho_tune")
