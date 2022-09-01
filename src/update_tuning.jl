@@ -37,10 +37,10 @@ function update_tuning_mat(k, accept, tune)
     	for j in 1:p
             if accept[i, j] > 0.44
                  tune_out[i, j] = exp(log(tune[i, j]) + delta)
-             else
+            else
                  tune_out[i, j] = exp(log(tune[i, j]) - delta)
-	     end
-	 end
+	        end
+	    end
     end
     accept_out = zeros(n, p)
     Dict{String, Any}("accept" => accept_out, "tune" => tune_out)
@@ -69,9 +69,9 @@ function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune, Sigma_tu
     batch_samples_out = copy(batch_samples)
     for j in 1:d
     	mean_batch = mean(batch_samples[:, j]) # check the dims
-	for i in 1:batch_size
-	    batch_samples_out[i, j] = batch_samples[i, j] - mean_batch
-	end
+	    for i in 1:batch_size
+	        batch_samples_out[i, j] = batch_samples[i, j] - mean_batch
+	    end
     end
     Sigma_tune_out = Sigma_tune + gamma1 * (batch_samples_out' * batch_samples_out / (50.0 - 1.0) - Sigma_tune)
     Sigma_tune_chol_out = cholesky(Matrix(Hermitian(Sigma_tune_out)))
@@ -104,8 +104,9 @@ function update_tuning_mv(k, accept, lambda, batch_samples, Sigma_tune)
     lambda = lambda * adapt_factor
     for j in 1:d
     	mean_batch = mean(batch_samples[:, j]) # check the dims
-	for i in 1:batch_size
-	    batch_samples[i, j] .-= mean_batch
+	    for i in 1:batch_size
+	        batch_samples[i, j] .-= mean_batch
+        end
     end
     Sigma_tune = PDMat(Sigma_tune.mat + gamma1 * (batch_samples_out' * batch_samples_out / (50.0 - 1.0) - Sigma_tune.mat))
     accept = 0.0

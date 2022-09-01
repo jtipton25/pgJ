@@ -108,7 +108,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
                 "rho_accept" => 0,
                 "sigma_accept" => 0,
                 "tau_accept" => 0,
@@ -122,7 +122,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
             if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (params["n_adapt"] + params["n_mcmc"], J - 1, 2))
-                out["Sigma_theta_tune"] = [PDMat(0.01 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
+                out["Sigma_theta_tune"] = [PDMat(1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
             end
         end
     else
@@ -165,7 +165,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 "corr_fun" => corr_fun,
                 "theta_accept" => 0,
                 "lambda_theta" => Array{Float64}(undef, J - 1),
-                "Sigma_theta_tune" => [PDMat(0.1 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1],
+                "Sigma_theta_tune" => [PDMat(1.8 * diagm([1]) .- 0.8) for j in 1:J-1],
                 "rho_accept" => 0,
                 "Y" => Y,
                 "X" => X,
@@ -176,7 +176,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
             )
                         if corr_fun == "matern"
                 out["theta"] = Array{Float64}(undef, (n_save, J - 1, 2))
-                out["Sigma_theta_tune"] = [PDMat(0.1 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
+                out["Sigma_theta_tune"] = [PDMat(1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
             end
         end
     end
@@ -278,28 +278,17 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
     n_nonzero = sum(nonzero_idx)
 
-
-    # default priors
-    # mu_beta = zeros(p)
-    # Sigma_beta = Diagonal(10.0 .* ones(p))
-
+    # priors for beta
     mu_beta = priors["mu_beta"]
     Sigma_beta = PDMat(priors["Sigma_beta"])
-
-    # TODO add in custom priors for mu_beta and Sigma_beta
-    Sigma_beta_inv = inv(Sigma_beta)
+    ## PDMat inverse of scalar matrix
+    if size(Sigma_beta, 1) .== 1
+        Sigma_beta_inv = inv(Sigma_beta.mat)
+    else 
+        Sigma_beta_inv = inv(Sigma_beta)
+    end
+    
     Sigma_beta_inv_mu_beta = Sigma_beta_inv * mu_beta
-
-    # the first case using the pre-computed cholesky is much faster
-    # p = 5000
-    # mu_beta = zeros(p)
-    # A = rand(Normal(0, 1), p, p)
-    # A = A * A'
-    # Sigma_beta = Diagonal(10.0 .* ones(p)) + A
-    # Sigma_beta_chol = cholesky(Sigma_beta)
-    #
-    # @time beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta, Sigma_beta_chol)), J-1);
-    # @time beta = rand(MvNormal(mu_beta, PDMat(Sigma_beta)), J-1);
 
     # initialize beta
     beta = rand(MvNormal(mu_beta, Sigma_beta), J - 1)
@@ -357,22 +346,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         rho = copy(rho_init)
     end
 
-    # TODO: check if initial values are supplied
-
-
     # setup the GP covariance
     D = pairwise(Euclidean(), locs, locs, dims=1)
 
-    # R = [exp.(-D / exp(v)) for v in theta]
-    # R = [
-    #     Matrix(Hermitian(correlation_function.(D, (exp.(v),), corr_fun=corr_fun))) for
-    #     v in eachcol(theta)
-    # ] # broadcasting over D but not theta
     R = [correlation_function.(D, (exp.(v),), corr_fun=corr_fun) for v in eachcol(theta)] # broadcasting over D but not theta
     Sigma = [PDMat(tau[j]^2 * R[j] + sigma[j]^2 * I) for j in 1:(J-1)]
-    # Sigma_chol = [cholesky(v) for v in Sigma]
     Sigma_inv = [inv(v) for v in Sigma]
-
 
     # initialize eta
     eta = Array{Float64}(undef, (N, J - 1, n_time))
@@ -466,14 +445,14 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
     if !isnothing(theta_accept_init)
         theta_accept = copy(theta_accept_init)
     end
-    lambda_theta = 0.01 * ones(J - 1)
+    lambda_theta = 0.1 * ones(J - 1)
     theta_accept_batch = zeros(J - 1)
     theta_batch = Array{Float64}(undef, 50, J - 1)
-    Sigma_theta_tune = [PDMat(0.01 * (1.8 * diagm([1]) .- 0.8)) for j in 1:J-1]
+    Sigma_theta_tune = [PDMat(1.8 * diagm([1]) .- 0.8) for j in 1:J-1]
 
     if corr_fun == "matern"
         theta_batch = Array{Float64}(undef, 50, J - 1, 2)
-        Sigma_theta_tune = [PDMat(0.01 * (1.8 * diagm(ones(2)) .- 0.8)) for j in 1:J-1]
+        Sigma_theta_tune = [PDMat(1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
     end
     if !isnothing(lambda_theta_init)
         lambda_theta = copy(lambda_theta_init)
@@ -571,7 +550,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
         if (sample_beta)
             for j in 1:(J-1)
-                tXSigma_inv = tX * Sigma_inv[j]
+                tXSigma_inv = tX * Sigma_inv[j].mat
                 if correct_initial_variance
                     A = ((1.0 - rho[j]^2) + (n_time - 1.0) * (1.0 - rho[j])^2) * tXSigma_inv * X + Sigma_beta_inv
                     b = dropdims(
@@ -613,47 +592,43 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         #
 
         if (sample_eta)
-            Threads.@threads for t = 1:n_time # time first XX seconds 
-                if t == 1
-                    # initial time
-                    for j in 1:(J-1)
+            Threads.@threads for j in 1:(J-1)
+                for t = 1:n_time # time first XX seconds 
+                    if t == 1
+                        # initial time
                         if correct_initial_variance
-                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1])
                             b =
-                                Sigma_inv[j] * (
+                                Sigma_inv[j].mat * (
                                     ((1.0 - rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] +
                                     rho[j] * eta[:, j, 2]
                                 ) + kappa[:, j, 1]
                             eta[:, j, 1] =
                                 rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                         else
-                            A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, 1])
+                            A = (1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1])
                             b =
-                                Sigma_inv[j] * (
+                                Sigma_inv[j].mat * (
                                     (1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] +
                                     rho[j] * eta[:, j, 2]
                                 ) + kappa[:, j, 1]
                             eta[:, j, 1] =
                                 rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
                         end
-                    end
-                elseif t == n_time
-                    # final time
-                    for j in 1:(J-1)
-                        A = Sigma_inv[j] + Diagonal(omega[:, j, n_time])
+                    elseif t == n_time
+                        # final time
+                        A = Sigma_inv[j].mat + Diagonal(omega[:, j, n_time])
                         b =
-                            Sigma_inv[j] *
+                            Sigma_inv[j].mat *
                             ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
                             kappa[:, j, n_time]
                         eta[:, j, n_time] =
                             rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
-                    end
-                else
-                    # middle times
-                    for j in 1:(J-1)
-                        A = (1.0 + rho[j]^2) * Sigma_inv[j] + Diagonal(omega[:, j, t])
+                    else
+                        # middle times
+                        A = (1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, t])
                         b =
-                            Sigma_inv[j] * (
+                            Sigma_inv[j].mat * (
                                 (1.0 - rho[j])^2 * Xbeta[:, j] +
                                 rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
                             ) + kappa[:, j, t]
@@ -671,25 +646,15 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
         if (sample_tau)
             Threads.@threads for j in 1:(J-1)
                 tau_star = exp(rand(Normal(log(tau[j]), tau_tune[j])))
-                # Sigma_star = PDMat(tau_star^2 * R[j] + sigma[j]^2 * I)
                 Sigma_star = try
                     PDMat(tau_star^2 * R[j] + sigma[j]^2 * I)
                 catch
-                    println("theta[:,j] = ", theta[:, j], "tau_star = ", tau_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
+                    println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "tau_star = ", tau_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
                     flush(stdout)
-                    @warn string("The Covariance matrix for updating tau has been mildly regularized with tau_star = ", tau_star, ". If this warning is rare, it should be ok to ignore it.")
+                    @warn string("The Covariance matrix for updating tau has been mildly regularized. If this warning is rare, it should be ok to ignore it.")
                     flush(stderr)
                     PDMat(tau_star^2 * R[j] + sigma[j]^2 * I + 1e-6 * I)
                 end
-                # Sigma_chol_star = try
-                #     cholesky(Sigma_star)
-                # catch
-                #     println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "tau[j] = ", tau[j], "tau_star = ", tau_star)
-                #     flush(stdout)
-                #     @warn "The Covariance matrix for updating tau2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                #     flush(stderr)
-                #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
-                # end
 
                 mh1 =
                     sum([
@@ -722,11 +687,11 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                 if correct_initial_variance
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma_star),
+                        MvNormal(Xbeta[:, j], update_Sigma_star(Sigma_star, sqrt(1.0 / (1.0 - rho[j]^2)))),
                         eta[:, j, 1],
                     )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
+                        MvNormal(Xbeta[:, j], update_Sigma_star(Sigma[j], sqrt(1.0 / (1.0 - rho[j]^2)))),
                         eta[:, j, 1],
                     )
                 else
@@ -772,146 +737,92 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 theta_star = rand(
                     MvNormal(
                         theta[:, j],
-                        sqrt(lambda_theta[j]) *
+                        lambda_theta[j] *
                         Sigma_theta_tune[j],
                     ),
                 )
-                # if (corr_fun == "matern") & ((theta_star[1] > 4.1) | (theta_star[2] < -6.3))
-                #     # eliminate Matern correlation function failure
-                #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
-                        # flush(stderr)
-                #     flush(stdout)
-                # else
-                    R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
-                    # R_star = try
-                    #     Matrix(
-                    #         Hermitian(
-                    #             correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun),
-                    #         ),
-                    #     ) # broadcasting over D but not theta_star
-                    # catch
-                    #     println("theta_star = ", theta_star)
-                    #     flush(stdout)
-                    #     @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
-                    #     if k <= params["n_adapt"]
-                    #             theta_accept_batch[j] -= 1.0 / 50.0
-                    #     else
-                    #         theta_accept[j] -= 1.0 / params["n_mcmc"]
-                    #     end
-                    #     theta_star = theta[:, j]
-                    #     R[j]
-                    # end
-                    if (any(isnan.(R_star)))
-                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
-                        flush(stdout)
-                        @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
-                        flush(stderr)
-                        if k <= params["n_adapt"]
-                            theta_accept_batch[j] -= 1.0 / 50.0
-                        else
-                            theta_accept[j] -= 1.0 / params["n_mcmc"]
-                        end
-                        theta_star = theta[:, j]
-                        R_star = R[j]
+                R_star = correlation_function.(D, (exp.(theta_star),), corr_fun=corr_fun) # broadcasting over D but not theta_star
+                if (any(isnan.(R_star)))
+                    println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
+                    flush(stdout)
+                    @warn "The proposal for theta_star was potentially computationally unstable and the MH proposal was discarded. If this warning is rare, it should be ok to ignore it."
+                    flush(stderr)
+                    if k <= params["n_adapt"]
+                        theta_accept_batch[j] -= 1.0 / 50.0
+                    else
+                        theta_accept[j] -= 1.0 / params["n_mcmc"]
                     end
-
+                    theta_star = deepcopy(theta[:, j])
+                    R_star = deepcopy(R[j])
+                    Sigma_star = deepcopy(Sigma[j])
+                else
                     Sigma_star = try
                         PDMat(tau[j]^2 * R_star + sigma[j]^2 * I)
                     catch
-                        println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
+                        println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
                         flush(stdout)
-                        @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
+                        @warn string("The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it.")
                         flush(stderr)
                         PDMat(tau[j]^2 * R_star + sigma[j]^2 * I + 1e-6 * I)
                     end
+                end
+                
+                mh1 =
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                Sigma_star,
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
 
-                    # Sigma_chol_star = try
-                    #     cholesky(Sigma_star)
-                    # catch
-                    #     println("theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, " sigma[j] = ", sigma[j], "tau[j] = ", tau[j])
-                    #     flush(stdout)
-                    #     @warn "The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                    #     flush(stderr)
-                    #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
-                    # end
-                    # Sigma_chol_star = try
-                    #     cholesky(R_star)
-                    # catch
-                    #     @warn string("The Covariance matrix for updating theta has been mildly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
-                    # flush(stderr)
-                    #     try
-                    #          cholesky(Hermitian(Sigma_star + 1e-6 * I))
-                    #     catch
-                    #         @warn string("The Covariance matrix for updating theta has been moderately regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
-                    # flush(stderr)
-                    #         try
-                    #             cholesky(Hermitian(Sigma_star + 1e-4 * I))
-                    #         catch
-                    #             @warn string("The Covariance matrix for updating theta has been strongly regularized with theta_star = ", theta_star, ". If this warning is rare, it should be ok to ignore it.")
-                    # flush(stderr)
-                    #             cholesky(Hermitian(Sigma_star + 1e-2 * I))
-                    #         end
-                    #     end
-                    # end
+                mh2 =
+                    sum([
+                        logpdf(
+                            MvNormal(
+                                (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
+                                Sigma[j],
+                            ),
+                            eta[:, j, t],
+                        ) for t = 2:n_time
+                    ]) +
+                    logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
 
-                    mh1 =
-                        sum([
-                            logpdf(
-                                MvNormal(
-                                    (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma_star, Sigma_chol_star),
-                                ),
-                                eta[:, j, t],
-                            ) for t = 2:n_time
-                        ]) +
-                        logpdf(MvNormal(theta_mean, diagm(theta_var)), theta_star)
+                if correct_initial_variance
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], update_Sigma_star(Sigma_star, sqrt(1.0 / (1.0 - rho[j]^2)))),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], update_Sigma_star(Sigma[j], sqrt(1.0 / (1.0 - rho[j]^2)))),
+                        eta[:, j, 1],
+                    )
+                else
+                    mh1 += logpdf(
+                        MvNormal(Xbeta[:, j], Sigma_star),
+                        eta[:, j, 1],
+                    )
+                    mh2 += logpdf(
+                        MvNormal(Xbeta[:, j], Sigma[j]),
+                        eta[:, j, 1],
+                    )
+                end
 
-                    mh2 =
-                        sum([
-                            logpdf(
-                                MvNormal(
-                                    (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
-                                ),
-                                eta[:, j, t],
-                            ) for t = 2:n_time
-                        ]) +
-                        logpdf(MvNormal(theta_mean, diagm(theta_var)), theta[:, j])
-
-                    if correct_initial_variance
-                        mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma_star, Sigma_chol_star)),
-                            eta[:, j, 1],
-                        )
-                        mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        )
+                mh = exp(mh1 - mh2)
+                if mh > rand(Uniform(0, 1))
+                    theta[:, j] = theta_star
+                    R[j] = R_star
+                    Sigma[j] = Sigma_star
+                    Sigma_inv[j] = inv(Sigma_star)
+                    if k <= params["n_adapt"]
+                        theta_accept_batch[j] += 1.0 / 50.0
                     else
-                        mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], PDMat(Sigma_star, Sigma_chol_star)),
-                            eta[:, j, 1],
-                        )
-                        mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        )
+                        theta_accept[j] += 1.0 / params["n_mcmc"]
                     end
-
-                    mh = exp(mh1 - mh2)
-                    if mh > rand(Uniform(0, 1))
-                        theta[:, j] = theta_star
-                        R[j] = R_star
-                        Sigma[j] = Sigma_star
-                        Sigma_chol[j] = Sigma_chol_star
-                        Sigma_inv[j] = inv(Sigma_chol_star)
-                        if k <= params["n_adapt"]
-                            theta_accept_batch[j] += 1.0 / 50.0
-                        else
-                            theta_accept[j] += 1.0 / params["n_mcmc"]
-                        end
-                    end
-                # end
+                end
             end
         end
 
@@ -951,7 +862,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                                 MvNormal(
                                     (1 - rho_star) * Xbeta[:, j] +
                                     rho_star * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                    Sigma[j],
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -962,7 +873,7 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                             logpdf(
                                 MvNormal(
                                     (1 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, t-1],
-                                    PDMat(Sigma[j], Sigma_chol[j]),
+                                    Sigma[j],
                                 ),
                                 eta[:, j, t],
                             ) for t = 2:n_time
@@ -970,13 +881,13 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
 
                     if correct_initial_variance
                         mh1 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho_star^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        )
+                                    MvNormal(Xbeta[:, j], update_Sigma_star(Sigma[j], sqrt(1.0 / (1.0 - rho_star^2)))),
+                                    eta[:, j, 1],
+                                )
                         mh2 += logpdf(
-                            MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * PDMat(Sigma[j], Sigma_chol[j])),
-                            eta[:, j, 1],
-                        )
+                                    MvNormal(Xbeta[:, j], update_Sigma_star(Sigma[j], sqrt(1.0 / (1.0 - rho[j]^2)))),
+                                    eta[:, j, 1],
+                                )
                     end # no rho in the first eta when initial variance isn't corrected
 
                     mh = exp(mh1 - mh2)
@@ -1012,22 +923,12 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                 Sigma_star = try
                     PDMat(tau[j]^2 * R[j] + sigma_star^2 * I)
                 catch
-                    println("theta[:,j] = ", theta[:, j], "tau[j] = ", tau[j], "sigma_star = ", sigma_star, "sigma[j] = ", sigma[j])
+                    println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "tau[j] = ", tau[j], "sigma_star = ", sigma_star, "sigma[j] = ", sigma[j])
                     flush(stdout)
-                    @warn string("The Covariance matrix for updating sigma has been mildly regularized with sigma_star = ", sigma_star, ". If this warning is rare, it should be ok to ignore it.")
+                    @warn string("The Covariance matrix for updating sigma has been mildly regularized. If this warning is rare, it should be ok to ignore it.")
                     flush(stderr)
                     PDMat(tau[j]^2 * R[j] + sigma_star^2 * I + 1e-6 * I)
                 end
-
-                # Sigma_star = Matrix(Hermitian(tau[j]^2 * R[j] + sigma_star^2 * I))
-                # Sigma_chol_star = try
-                #     cholesky(Sigma_star)
-                # catch
-                #     println("theta[:,j] = ", theta[:, j], " sigma[j] = ", sigma[j], "sigma_star = ", sigma_star, "tau[j] = ", tau[j])
-                #     flush(stdout)
-                #     @warn "The Covariance matrix for updating sigma2 has been mildly regularized. If this warning is rare, it should be ok to ignore it."
-                #     cholesky(Matrix(Hermitian(Sigma_star + 1e-6 * I)))
-                # end
 
                 mh1 =
                     sum([
@@ -1061,15 +962,18 @@ function pg_stlm_overdispersed(Y, X, locs, params, priors; corr_fun="exponential
                     ) +
                     log(sigma2[j])
 
+                
+                
+                
                 if correct_initial_variance
                     mh1 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma_star),
-                        eta[:, j, 1],
-                    )
+                                MvNormal(Xbeta[:, j], update_Sigma_star(Sigma_star, sqrt(1.0 / (1.0 - rho[j]^2)))),
+                                eta[:, j, 1],
+                            )
                     mh2 += logpdf(
-                        MvNormal(Xbeta[:, j], 1.0 / (1.0 - rho[j]^2) * Sigma[j]),
-                        eta[:, j, 1],
-                    )
+                                MvNormal(Xbeta[:, j], update_Sigma_star(Sigma[j], sqrt(1.0 / (1.0 - rho[j]^2)))),
+                                eta[:, j, 1],
+                            )
                 else
                     mh1 += logpdf(
                         MvNormal(Xbeta[:, j], Sigma_star),
