@@ -132,7 +132,7 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         else
             # initialize the Dict
             out = Dict(
-                "k" => 1,
+                "k" => 0,
                 "checkpoint_idx" => Array{Int64}(undef, 0),
                 "beta" => Array{Float64}(undef, (n_save, p, J - 1)),
                 "eta" => Array{Float64}(undef, (n_save, N, J - 1, n_time)),

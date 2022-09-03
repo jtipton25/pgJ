@@ -709,10 +709,10 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                     theta_batch,
                     Sigma_theta_tune,
                 )
-                theta_batch = out_tuning["batch_samples"]
-                Sigma_theta_tune = out_tuning["Sigma_tune"]
-                lambda_theta = out_tuning["lambda"]
                 theta_accept_batch = out_tuning["accept"]
+                lambda_theta = out_tuning["lambda"]
+                theta_batch = out_tuning["batch_samples"]
+                Sigma_theta_tune = out_tuning["Sigma_tune"]                
             end
         end
 
