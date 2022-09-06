@@ -681,9 +681,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
 
                 mh = exp(mh1 - mh2)
                 if mh > rand(Uniform(0, 1))
-                    theta[:, j] = theta_star
-                    R[j] = R_star
-                    Sigma[j] = Sigma_star
+                    theta[:, j] = deepcopy(theta_star)
+                    R[j] = deepcopy(R_star)
+                    Sigma[j] = deepcopy(Sigma_star)
                     Sigma_inv[j] = inv(Sigma_star)
                     if k <= params["n_adapt"]
                         theta_accept_batch[j] += 1.0 / 50.0

@@ -76,8 +76,8 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 preds = predict_pg_stlm_overdispersed(out, X_pred, locs_pred, n_message = 50, n_save = 50); 
     
-if (!isfile("output/pollen/pollen_overdispersed_predictions.rds"))
-    R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_predictions.rds', compress = FALSE)";
+if (!isfile("output/pollen/pollen_overdispersed_preds.rds"))
+    R"saveRDS($preds, file = 'output/pollen/pollen_overdispersed_preds.rds', compress = FALSE)";
 end
 
 # alert("Finished Overdispersed predictions")

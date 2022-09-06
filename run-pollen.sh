@@ -29,3 +29,12 @@ if [ $retval -ne 0 ]; then
   echo "Julia script pollen_pg_stlm_latent_script.jl failed with $retval" 
   exit $retval
 fi
+
+# Generate Maps
+echo "Generating Maps"
+nohup R ./src/plot_figures.R retval=$?
+
+if [ $retval -ne 0 ]; then
+  echo "R script plot_figures.R failed with $retval" 
+  exit $retval
+fi

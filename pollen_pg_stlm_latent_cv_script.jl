@@ -39,7 +39,7 @@ for k in 1:K
     p = size(X)[2]
     # load the location data
     locs = load("./data/pollen_locs_5.0.h5")["locs"];
-    rescale = 1e3
+    rescale = 1e6
     locs = locs / rescale
     params = Dict{String, Int64}("n_adapt" => 5000, "n_mcmc" => 5000, "n_thin" => 5, "n_message" => 50, "n_save" => 200);
 

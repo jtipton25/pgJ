@@ -81,8 +81,8 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 preds = predict_pg_stlm(out, X_pred, locs_pred, n_message = 50, n_save=10); 
 
-if (!isfile("output/pollen/pollen_matern_fit.rds"))
-    R"saveRDS($preds, file = 'output/pollen/pollen_matern_fit.rds', compress = FALSE)";
+if (!isfile("output/pollen/pollen_matern_preds.rds"))
+    R"saveRDS($preds, file = 'output/pollen/pollen_matern_preds.rds', compress = FALSE)";
 end
 
 # alert("Finished Matern predictions")

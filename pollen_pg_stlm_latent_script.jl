@@ -38,7 +38,7 @@ X = reshape(ones(size(Y)[1]), size(Y)[1], 1);
 p = size(X)[2]
 # load the location data
 locs = load("./data/pollen_locs_5.0.h5")["locs"];
-rescale = 1e3
+rescale = 1e6
 locs = locs / rescale
 
 # params = Dict{String, Int64}("n_adapt" => 200, "n_mcmc" => 100, "n_thin" => 5, "n_message" => 50);
@@ -75,8 +75,8 @@ X_pred = reshape(ones(size(locs_pred)[1]), size(locs_pred)[1], 1);
 
 preds = predict_pg_stlm_latent(out, X_pred, locs_pred, n_message = 50, n_save=50); 
 
-if (!isfile("output/pollen/pollen_latent_predictions.rds"))
-    R"saveRDS($preds, file = 'output/pollen/pollen_latent_predictions.rds', compress = FALSE)";
+if (!isfile("output/pollen/pollen_latent_preds.rds"))
+    R"saveRDS($preds, file = 'output/pollen/pollen_latent_preds.rds', compress = FALSE)";
 end
 
 # alert("Finished Latent predictions")
