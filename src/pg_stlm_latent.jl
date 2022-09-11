@@ -4,7 +4,7 @@ include("correlation_function.jl")
 
 function update_Sigma(R, tau)
     J = size(R, 1) + 1
-    Sigma = deepcopy(R)    
+    Sigma = deepcopy(R)
     for j in 1:(J-1)
         Sigma[j].mat .*= tau[j]^2
         Sigma[j].chol.U .*= tau[j]
@@ -13,7 +13,7 @@ function update_Sigma(R, tau)
 end
 
 function update_Sigma_star(R, tau)
-    Sigma = deepcopy(R)    
+    Sigma = deepcopy(R)
     Sigma.mat .*= tau^2
     Sigma.chol.U .*= tau
     return Sigma
@@ -62,7 +62,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
     lambda_theta_init = nothing
     Sigma_theta_tune_init = nothing
     rho_tune_init = nothing
-    
+
     if save_full
         if isfile(path)
             out = load(path)
@@ -118,7 +118,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 out["Sigma_theta_tune"] = [PDMat(1.8 * diagm(ones(2)) .- 0.8) for j in 1:J-1]
             end
         end
-    else 
+    else
         # only save the reduced samples
         if isfile(path)
             out = load(path)
@@ -181,24 +181,24 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         if !isempty(out["k"])
             if out["k"][end] == (params["n_adapt"] + params["n_mcmc"])
 
-            delete!(out, "eta_init")
-            delete!(out, "psi_init")
-            delete!(out, "beta_init")
-            delete!(out, "Sigma_theta_tune")
-            delete!(out, "rho_init")
-            delete!(out, "rho_tune")
-            delete!(out, "rho_accept")
-            delete!(out, "omega_init")
-            delete!(out, "tau_tune")
-            delete!(out, "tau_accept")
-            delete!(out, "sigma_tune")
-            delete!(out, "sigma_accept")
-            delete!(out, "k")
-            delete!(out, "tau_init")
-            delete!(out, "lambda_theta")
-            delete!(out, "checkpoint_idx")
-            delete!(out, "theta_accept")
-            delete!(out, "theta_init")
+                delete!(out, "eta_init")
+                delete!(out, "psi_init")
+                delete!(out, "beta_init")
+                delete!(out, "Sigma_theta_tune")
+                delete!(out, "rho_init")
+                delete!(out, "rho_tune")
+                delete!(out, "rho_accept")
+                delete!(out, "omega_init")
+                delete!(out, "tau_tune")
+                delete!(out, "tau_accept")
+                delete!(out, "sigma_tune")
+                delete!(out, "sigma_accept")
+                delete!(out, "k")
+                delete!(out, "tau_init")
+                delete!(out, "lambda_theta")
+                delete!(out, "checkpoint_idx")
+                delete!(out, "theta_accept")
+                delete!(out, "theta_init")
 
                 return out
             end
@@ -277,7 +277,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
     ## PDMat inverse of scalar matrix
     if size(Sigma_beta, 1) .== 1
         Sigma_beta_inv = inv(Sigma_beta.mat)
-    else 
+    else
         Sigma_beta_inv = inv(Sigma_beta)
     end
 
@@ -412,7 +412,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
     #
     # setup save variables
     #
-    
+
     beta_save = Array{Float64}(undef, (params["n_save"], p, J - 1))
     tau_save = Array{Float64}(undef, (params["n_save"], J - 1))
     sigma_save = Array{Float64}(undef, (params["n_save"], J - 1))
@@ -426,7 +426,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
     pi_save = Array{Float64}(undef, (params["n_save"], N, J, n_time))
     omega_save = Array{Float64}(undef, (params["n_save"], N, J - 1, n_time))
     k_vec = zeros(Int64, params["n_save"])
-    if !save_full        
+    if !save_full
         beta_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), p, J - 1))
         tau_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), J - 1))
         sigma_save = Array{Float64}(undef, (Int(params["n_save"] / params["n_thin"]), J - 1))
@@ -572,7 +572,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 devs = Array{Float64}(undef, (N, n_time))
                 if correct_initial_variance
                     devs[:, 1] = psi[:, j, 1] * sqrt(1.0 - rho[j]^2)
-                else        
+                else
                     devs[:, 1] = psi[:, j, 1]
                 end
                 for t = 2:n_time
@@ -589,7 +589,13 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 )
 
                 Sigma[j] = update_Sigma_star(R[j], tau[j])
-                Sigma_inv[j] = inv(Sigma[j])
+                Sigma_inv[j] = try
+                    inv(Sigma[j])
+                catch
+                    @warn "The inversion for Sigma when updating tau potentially computationally unstable and was mildly regularize. If this warning is rare, it should be ok to ignore it."
+                    flush(stderr)
+                    inv(Sigma[j] + 1e-6 * I)
+                end
             end
         end
 
@@ -621,7 +627,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                     theta_star = deepcopy(theta[:, j])
                     R_star = deepcopy(R[j])
                 else
-                    R_star = try 
+                    R_star = try
                         PDMat(R_star)
                     catch
                         println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "theta_star = ", theta_star, "tau[j] = ", tau[j], "sigma[j] = ", sigma[j])
@@ -629,7 +635,13 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         @warn string("The Covariance matrix for updating theta has been mildly regularized. If this warning is rare, it should be ok to ignore it.")
                         flush(stderr)
 
-                        PDMat(R_star + 1e-6 * I)
+                        try 
+                            PDMat(R_star + 1e-6 * I)
+                        catch
+                            @warn string("The Covariance matrix for updating theta has been moderately regularized. If this warning is rare, it should be ok to ignore it.")
+                            flush(stderr)
+                            PDMat(R_star + 1e-4 * I)
+                        end
                     end
                 end
                 Sigma_star = update_Sigma_star(R_star, tau[j])
@@ -676,7 +688,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                         MvNormal(zeros(N), Sigma[j]),
                         psi[:, j, 1],
                     )
-                end   
+                end
 
 
                 mh = exp(mh1 - mh2)
@@ -712,7 +724,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 theta_accept_batch = out_tuning["accept"]
                 lambda_theta = out_tuning["lambda"]
                 theta_batch = out_tuning["batch_samples"]
-                Sigma_theta_tune = out_tuning["Sigma_tune"]                
+                Sigma_theta_tune = out_tuning["Sigma_tune"]
             end
         end
 
@@ -816,17 +828,17 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 end
                 A_n_time = PDMat(Matrix(Hermitian(Sigma_inv[j].mat + 1.0 / sigma[j]^2 * I)))
                 A_t = PDMat(Matrix(Hermitian((1.0 + rho[j]^2) * Sigma_inv[j].mat + 1.0 / sigma[j]^2 * I)))
-            
+
                 for t = 1:n_time
                     if t == 1
-                    # initial time    
+                        # initial time    
                         if correct_initial_variance
                             b =
-                                Sigma_inv[j].mat * (1.0 - rho[j]^2) *(rho[j] * psi[:, j, 2]) +
+                                Sigma_inv[j].mat * (1.0 - rho[j]^2) * (rho[j] * psi[:, j, 2]) +
                                 1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
                             psi[:, j, 1] =
                                 rand(MvNormalCanon(b, A1), 1)
-                        else 
+                        else
                             b =
                                 Sigma_inv[j].mat * (rho[j] * psi[:, j, 2]) +
                                 1.0 / sigma[j]^2 * (eta[:, j, 1] - Xbeta[:, j])
@@ -858,7 +870,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
 
         if save_full
             if ((k >= checkpoints[checkpoint_idx]) & (k < checkpoints[checkpoint_idx+1])) | (k == (params["n_adapt"] + params["n_mcmc"]))
-                save_idx = k-checkpoints[checkpoint_idx]+1
+                save_idx = k - checkpoints[checkpoint_idx] + 1
                 k_vec[save_idx] = k
                 beta_save[save_idx, :, :, :] = beta
                 eta_save[save_idx, :, :, :] = eta
@@ -903,9 +915,9 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         #
         # save as file
         #
-        
+
         if save_full
-            if k == (checkpoints[checkpoint_idx + 1] - 1)
+            if k == (checkpoints[checkpoint_idx+1] - 1)
                 append!(out["k"], k_vec)
                 append!(out["checkpoint_idx"], checkpoint_idx)
                 out["beta"][k_vec, :, :] = beta_save
@@ -922,7 +934,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                 out["theta_accept"] = theta_accept
                 out["lambda_theta"] = lambda_theta
                 out["Sigma_theta_tune"] = Sigma_theta_tune
-                
+
                 toc = now()
                 out["runtime"] += Int(Dates.value(toc - tic))
                 tic = now()
@@ -931,7 +943,7 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
                     checkpoint_idx += 1
                 end
             end
-        else 
+        else
             if k == (checkpoints[checkpoint_idx+1] - 1)
                 if (k > params["n_adapt"])
                     # add the save variables
@@ -985,14 +997,11 @@ function pg_stlm_latent(Y, X, locs, params, priors; corr_fun="exponential", path
         delete!(out, "Sigma_theta_tune")
         delete!(out, "rho_init")
         delete!(out, "rho_tune")
-        delete!(out, "rho_accept")
         delete!(out, "omega_init")
         delete!(out, "k")
         delete!(out, "tau_init")
         delete!(out, "lambda_theta")
         delete!(out, "checkpoint_idx")
-        delete!(out, "rho_accept")
-        delete!(out, "theta_accept")
         delete!(out, "theta_init")
 
     end

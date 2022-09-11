@@ -14,11 +14,11 @@ function matern(d, nu, phi)
     dd = d / phi
     if dd == 0.0
         return(1.0)
-    elseif isapprox(dd, 0.0, atol=1e-10)
-        dd = 1e-10
+    elseif isapprox(dd, 0.0, atol=1e-8)
+        dd = 1e-8
     end
-    # return 1.0 / (2.0^(nu - 1.0) * gamma(nu)) * (dd^nu) * besselk(nu, dd)
-    return 1.0 / (2.0^(nu - 1.0) * Bessels.gamma(nu)) * (dd^nu) * Bessels.besselk(nu, dd)
+    return 1.0 / (2.0^(nu - 1.0) * SpecialFunctions.gamma(nu)) * (dd^nu) * SpecialFunctions.besselk(nu, dd)
+    # return 1.0 / (2.0^(nu - 1.0) * Bessels.gamma(nu)) * (dd^nu) * Bessels.besselk(nu, dd)
 
 end
 # function matern(d, nu, phi)

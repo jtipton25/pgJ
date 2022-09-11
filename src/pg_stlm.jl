@@ -533,39 +533,66 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                     if t == 1
                     # initial time
                         if correct_initial_variance
-                            A = ((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1])
+                            A = try
+                                PDMat(((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1]))
+                            catch
+                                @warn "The cholesky for updating eta at time t=1 was potentially computationally unstable."
+                                flush(stderr)
+                                PDMat(((1.0 - rho[j]^2) + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1]) + 1e-6 * I)
+                            end
+
                             b =
                                 Sigma_inv[j].mat *
                                 (((1.0 - rho[j]^2) - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                                 kappa[:, j, 1]
-                            eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                            eta[:, j, 1] = rand(MvNormalCanon(b, A), 1)
                         else 
-                            A = (1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1])
+                            A = try
+                                PDMat((1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1]))
+                            catch
+                                @warn "The cholesky for updating eta at time t = 1 was potentially computationally unstable."
+                                flush(stderr)
+                                PDMat((1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, 1]) + 1e-6 * I)
+                            end
+
                             b =
                                 Sigma_inv[j].mat *
                                 ((1.0 - rho[j] + rho[j]^2) * Xbeta[:, j] + rho[j] * eta[:, j, 2]) +
                                 kappa[:, j, 1]
-                            eta[:, j, 1] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                            eta[:, j, 1] = rand(MvNormalCanon(b, A), 1)
                         end
         
                     elseif t == n_time
                     # final time
-                        A = Sigma_inv[j].mat + Diagonal(omega[:, j, n_time])
+                        A = try
+                            PDMat(Sigma_inv[j].mat + Diagonal(omega[:, j, n_time]))
+                        catch
+                            @warn "The cholesky for updating eta at time t = T was potentially computationally unstable."
+                            flush(stderr)
+                            PDMat(Sigma_inv[j].mat + Diagonal(omega[:, j, n_time]) + 1e-6 * I)
+                        end
+
                         b =
                             Sigma_inv[j].mat *
                             ((1.0 - rho[j]) * Xbeta[:, j] + rho[j] * eta[:, j, n_time-1]) +
                             kappa[:, j, n_time]
-                        eta[:, j, n_time] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        eta[:, j, n_time] = rand(MvNormalCanon(b, A), 1)
                     else
                         # middle times  
-                        A = (1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, t])
+                        A = try
+                            PDMat((1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, t]))
+                        catch
+                            @warn "The cholesky for updating eta at time t = $t was potentially computationally unstable."
+                            flush(stderr)
+                            PDMat((1.0 + rho[j]^2) * Sigma_inv[j].mat + Diagonal(omega[:, j, t]) + 1e-6 * I)
+                        end
                         b =
                             Sigma_inv[j].mat * (
                                 (1.0 - rho[j])^2 * Xbeta[:, j] +
                                 rho[j] * (eta[:, j, t-1] + eta[:, j, t+1])
                             ) +
                             kappa[:, j, t]
-                        eta[:, j, t] = rand(MvNormalCanon(b, PDMat(Matrix(Hermitian(A)))), 1)
+                        eta[:, j, t] = rand(MvNormalCanon(b, A), 1)
                     end
                 end
             end
@@ -600,7 +627,16 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 )
 
                 Sigma[j] = update_Sigma_star(R[j], tau[j])
-                Sigma_inv[j] = inv(Sigma[j])
+                Sigma_inv[j] = try
+                    inv(Sigma[j])
+                catch
+                    println("k = ", k, "j = ", j, "theta[:,j] = ", theta[:, j], "tau[j] = ", tau[j])
+                    flush(stdout)
+                    @warn "The updated value for tau2 was potentially computationally unstable."
+                    flush(stderr)
+                    @warn "The MCMC at this point is unreliable"
+                    flush(stderr)
+                end
             end
         end
 

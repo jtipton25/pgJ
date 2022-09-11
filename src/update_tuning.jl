@@ -153,7 +153,7 @@ function update_tuning_mv_mat(k, accept, lambda, batch_samples, Sigma_tune, Sigm
 	        batch_samples_out[:, j, k] = batch_samples[:, j, k] .- mean_batch
 	    end
     end
-    for j in 1:p
+    for j in 1:d
         Sigma_tune_out[j] = Sigma_tune[j] .+ gamma1 .* (batch_samples_out[:, j, :]' * batch_samples_out[:, j, :] ./ (50.0-1.0) .- Sigma_tune[j])
         Sigma_tune_chol_out[j] = cholesky(Matrix(Hermitian(Sigma_tune_out[j])))        
     end
@@ -193,7 +193,7 @@ function update_tuning_mv_mat(k, accept, lambda, batch_samples, Sigma_tune)
 	        batch_samples[:, j, k] .-= mean(batch_samples[:, j, k])
 	    end
     end
-    for j in 1:p
+    for j in 1:d
         Sigma_tune[j] = PDMat(Sigma_tune[j].mat .+ gamma1 .* (batch_samples[:, j, :]' * batch_samples[:, j, :] ./ (50.0-1.0) .- Sigma_tune[j].mat))
     end
     accept = zeros(size(accept))
