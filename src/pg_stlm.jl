@@ -179,8 +179,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
                 delete!(out, "tau_init")
                 delete!(out, "lambda_theta")
                 delete!(out, "checkpoint_idx")
-                delete!(out, "rho_accept")
-                delete!(out, "theta_accept")
                 delete!(out, "theta_init")
 
                 return out
@@ -199,8 +197,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
             delete!(out, "tau_init")
             delete!(out, "lambda_theta")
             delete!(out, "checkpoint_idx")
-            delete!(out, "rho_accept")
-            delete!(out, "theta_accept")
             delete!(out, "theta_init")
 
             return out        
@@ -951,8 +947,6 @@ function pg_stlm(Y, X, locs, params, priors; corr_fun="exponential", path="./out
         delete!(out, "tau_init")
         delete!(out, "lambda_theta")
         delete!(out, "checkpoint_idx")
-        delete!(out, "rho_accept")
-        delete!(out, "theta_accept")
         delete!(out, "theta_init")
     end
 
